@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3 uid="uid://hq"]
+
+[ext_resource type="Script" path="res://scripts/hq.gd" id="1"]
+
+[sub_resource type="BoxShape3D" id="1"]
+size = Vector3(4, 2, 4)
+
+[node name="HQ" type="Node3D"]
+script = ExtResource("1")
+
+[node name="CollisionBody" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CollisionBody"]
+shape = SubResource("1")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1, 0)
+mesh = BoxMesh.new()
+scale = Vector3(4, 2, 4)
