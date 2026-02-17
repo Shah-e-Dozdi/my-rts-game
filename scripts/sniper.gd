@@ -2,13 +2,13 @@ extends CharacterBody3D
 
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 5.0
-@export var attack_range := 12.0
-@export var attack_damage := 8
-@export var attack_cooldown := 1.2
-@export var max_hp := 60
-@export var projectile_speed := 20.0
-@export var vision_range := 14.0
+@export var move_speed := 3.5
+@export var attack_range := 20.0
+@export var attack_damage := 25
+@export var attack_cooldown := 2.5
+@export var max_hp := 40
+@export var vision_range := 18.0
+@export var projectile_speed := 30.0
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -33,38 +33,54 @@ func _ready() -> void:
 	_nav_agent.path_desired_distance = 0.5
 	_nav_agent.target_desired_distance = 0.5
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.45
+	_nav_agent.radius = 0.4
 	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.45
-	capsule.height = 1.2
+	capsule.radius = 0.4
+	capsule.height = 1.4
 	col.shape = capsule
 	add_child(col)
 
+	# Tall, thin body
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.7, 1.2, 0.7)
+	box_mesh.size = Vector3(0.5, 1.4, 0.5)
 	_mesh.mesh = box_mesh
 	_mesh.position.y = 0.0
 	add_child(_mesh)
 
+	# Long rifle barrel
 	var barrel := MeshInstance3D.new()
 	var barrel_mesh := CylinderMesh.new()
-	barrel_mesh.top_radius = 0.08
-	barrel_mesh.bottom_radius = 0.08
-	barrel_mesh.height = 0.6
+	barrel_mesh.top_radius = 0.04
+	barrel_mesh.bottom_radius = 0.04
+	barrel_mesh.height = 1.0
 	barrel.mesh = barrel_mesh
 	barrel.rotation_degrees.x = 90
-	barrel.position = Vector3(0, 0.3, -0.5)
+	barrel.position = Vector3(0, 0.4, -0.7)
 	var barrel_mat := StandardMaterial3D.new()
-	barrel_mat.albedo_color = Color(0.3, 0.3, 0.3)
+	barrel_mat.albedo_color = Color(0.2, 0.2, 0.2)
 	barrel.material_override = barrel_mat
 	_mesh.add_child(barrel)
 
+	# Scope on top
+	var scope := MeshInstance3D.new()
+	var scope_mesh := CylinderMesh.new()
+	scope_mesh.top_radius = 0.06
+	scope_mesh.bottom_radius = 0.06
+	scope_mesh.height = 0.3
+	scope.mesh = scope_mesh
+	scope.rotation_degrees.x = 90
+	scope.position = Vector3(0, 0.55, -0.4)
+	var scope_mat := StandardMaterial3D.new()
+	scope_mat.albedo_color = Color(0.1, 0.1, 0.15)
+	scope.material_override = scope_mat
+	_mesh.add_child(scope)
+
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.2, 0.5, 0.9)
+	_mat_default.albedo_color = Color(0.3, 0.25, 0.5)
 
 	_mat_selected = StandardMaterial3D.new()
 	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
@@ -75,6 +91,7 @@ func _ready() -> void:
 	add_to_group("selectable")
 	add_to_group("player_units")
 	add_to_group("combat_units")
+	add_to_group("snipers")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -139,13 +156,11 @@ func _do_move() -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly (nav mesh may carve out target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
 		return
 
-	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -168,7 +183,6 @@ func _do_move_to(target: Vector3) -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -196,7 +210,6 @@ func _do_attack(_delta: float) -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		# Close enough to go direct (nav mesh may carve out building area)
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			_face_direction(diff)
@@ -218,18 +231,19 @@ func _do_attack(_delta: float) -> void:
 func _fire_projectile() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
+	# Tracer-style projectile
 	var proj := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = 0.12
-	sphere.height = 0.24
+	sphere.radius = 0.06
+	sphere.height = 0.12
 	proj.mesh = sphere
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.8, 0.2)
+	mat.albedo_color = Color(1.0, 0.2, 0.2)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.6, 0.1)
-	mat.emission_energy_multiplier = 2.0
+	mat.emission = Color(1.0, 0.1, 0.1)
+	mat.emission_energy_multiplier = 3.0
 	proj.material_override = mat
-	proj.global_position = global_position + Vector3(0, 0.6, 0)
+	proj.global_position = global_position + Vector3(0, 0.7, 0)
 
 	var target_ref := _attack_target
 	var damage := attack_damage
@@ -252,7 +266,7 @@ func _fire_projectile() -> void:
 		)
 
 func _auto_acquire_target() -> void:
-	var closest_dist := attack_range * 1.5
+	var closest_dist := attack_range * 1.2
 	var closest: Node3D = null
 	for group_name in ["enemy_units", "enemy_buildings"]:
 		for enemy in get_tree().get_nodes_in_group(group_name):

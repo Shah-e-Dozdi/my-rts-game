@@ -2,13 +2,13 @@ extends CharacterBody3D
 
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 5.0
-@export var attack_range := 12.0
-@export var attack_damage := 8
-@export var attack_cooldown := 1.2
-@export var max_hp := 60
-@export var projectile_speed := 20.0
-@export var vision_range := 14.0
+@export var move_speed := 8.0
+@export var attack_range := 6.0
+@export var attack_damage := 4
+@export var attack_cooldown := 0.8
+@export var max_hp := 30
+@export var vision_range := 22.0
+@export var projectile_speed := 25.0
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -33,38 +33,38 @@ func _ready() -> void:
 	_nav_agent.path_desired_distance = 0.5
 	_nav_agent.target_desired_distance = 0.5
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.45
+	_nav_agent.radius = 0.3
 	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.45
-	capsule.height = 1.2
+	capsule.radius = 0.3
+	capsule.height = 0.8
 	col.shape = capsule
 	add_child(col)
 
+	# Small, sleek body
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.7, 1.2, 0.7)
+	box_mesh.size = Vector3(0.5, 0.8, 0.5)
 	_mesh.mesh = box_mesh
 	_mesh.position.y = 0.0
 	add_child(_mesh)
 
-	var barrel := MeshInstance3D.new()
-	var barrel_mesh := CylinderMesh.new()
-	barrel_mesh.top_radius = 0.08
-	barrel_mesh.bottom_radius = 0.08
-	barrel_mesh.height = 0.6
-	barrel.mesh = barrel_mesh
-	barrel.rotation_degrees.x = 90
-	barrel.position = Vector3(0, 0.3, -0.5)
-	var barrel_mat := StandardMaterial3D.new()
-	barrel_mat.albedo_color = Color(0.3, 0.3, 0.3)
-	barrel.material_override = barrel_mat
-	_mesh.add_child(barrel)
+	# Speed fins on sides
+	for side in [-1.0, 1.0]:
+		var fin := MeshInstance3D.new()
+		var fin_mesh := BoxMesh.new()
+		fin_mesh.size = Vector3(0.08, 0.3, 0.4)
+		fin.mesh = fin_mesh
+		fin.position = Vector3(side * 0.3, 0.1, -0.1)
+		var fin_mat := StandardMaterial3D.new()
+		fin_mat.albedo_color = Color(0.1, 0.7, 0.3)
+		fin.material_override = fin_mat
+		_mesh.add_child(fin)
 
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.2, 0.5, 0.9)
+	_mat_default.albedo_color = Color(0.15, 0.65, 0.3)
 
 	_mat_selected = StandardMaterial3D.new()
 	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
@@ -75,6 +75,7 @@ func _ready() -> void:
 	add_to_group("selectable")
 	add_to_group("player_units")
 	add_to_group("combat_units")
+	add_to_group("scouts")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -139,13 +140,11 @@ func _do_move() -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly (nav mesh may carve out target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
 		return
 
-	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -168,7 +167,6 @@ func _do_move_to(target: Vector3) -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -196,7 +194,6 @@ func _do_attack(_delta: float) -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		# Close enough to go direct (nav mesh may carve out building area)
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			_face_direction(diff)
@@ -220,16 +217,16 @@ func _fire_projectile() -> void:
 		return
 	var proj := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = 0.12
-	sphere.height = 0.24
+	sphere.radius = 0.08
+	sphere.height = 0.16
 	proj.mesh = sphere
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.8, 0.2)
+	mat.albedo_color = Color(0.2, 1.0, 0.4)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.6, 0.1)
+	mat.emission = Color(0.1, 0.8, 0.3)
 	mat.emission_energy_multiplier = 2.0
 	proj.material_override = mat
-	proj.global_position = global_position + Vector3(0, 0.6, 0)
+	proj.global_position = global_position + Vector3(0, 0.4, 0)
 
 	var target_ref := _attack_target
 	var damage := attack_damage
