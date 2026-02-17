@@ -8,6 +8,9 @@ signal minerals_delivered(amount: int)
 @export var carry_capacity := 10
 
 var _mesh: MeshInstance3D
+var _mat_default: StandardMaterial3D
+var _mat_selected: StandardMaterial3D
+var _mat_carrying: StandardMaterial3D
 
 enum State { IDLE, MOVING, GATHERING, RETURNING }
 
@@ -34,6 +37,18 @@ func _ready() -> void:
 	_mesh.mesh = cap_mesh
 	add_child(_mesh)
 
+	# Pre-create materials
+	_mat_default = StandardMaterial3D.new()
+	_mat_default.albedo_color = Color(1.0, 1.0, 1.0)
+
+	_mat_selected = StandardMaterial3D.new()
+	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
+
+	_mat_carrying = StandardMaterial3D.new()
+	_mat_carrying.albedo_color = Color(1.0, 0.85, 0.2)
+
+	_mesh.material_override = _mat_default
+
 	add_to_group("units")
 	add_to_group("selectable")
 	_move_target = global_position
@@ -44,10 +59,17 @@ func _physics_process(delta: float) -> void:
 			_do_move()
 		State.GATHERING:
 			_do_gather(delta)
+			# Bob up and down while mining
+			_mesh.position.y = sin(Time.get_ticks_msec() * 0.006) * 0.2
 		State.RETURNING:
 			_do_return()
 		_:
 			velocity = Vector3.ZERO
+
+	# Reset mesh offset when not gathering
+	if _state != State.GATHERING:
+		_mesh.position.y = 0.0
+
 	move_and_slide()
 
 func command_move(target: Vector3) -> void:
@@ -68,12 +90,15 @@ func set_hq(hq: Node3D) -> void:
 
 func set_selected(value: bool) -> void:
 	_selected = value
-	var mat := StandardMaterial3D.new()
+	_update_appearance()
+
+func _update_appearance() -> void:
 	if _selected:
-		mat.albedo_color = Color(0.4, 0.9, 1.0)
+		_mesh.material_override = _mat_selected
+	elif _carried > 0:
+		_mesh.material_override = _mat_carrying
 	else:
-		mat.albedo_color = Color(1.0, 1.0, 1.0)
-	_mesh.material_override = mat
+		_mesh.material_override = _mat_default
 
 func _do_move() -> void:
 	var diff := _move_target - global_position
@@ -110,8 +135,10 @@ func _do_gather(delta: float) -> void:
 	if got <= 0:
 		_resource_target = null
 		_state = State.IDLE
+		_update_appearance()
 		return
 	_carried += got
+	_update_appearance()
 	if _carried >= carry_capacity:
 		_head_to_hq()
 
@@ -133,6 +160,7 @@ func _do_return() -> void:
 		if _carried > 0:
 			minerals_delivered.emit(_carried)
 			_carried = 0
+			_update_appearance()
 		if _resource_target != null:
 			_move_target = _resource_target.global_position
 			_state = State.MOVING
