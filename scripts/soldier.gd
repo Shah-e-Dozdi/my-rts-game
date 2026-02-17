@@ -13,6 +13,7 @@ var hp: int
 var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
 var _mat_selected: StandardMaterial3D
+var _nav_agent: NavigationAgent3D
 
 enum State { IDLE, MOVING, ATTACKING, ATTACK_MOVE }
 
@@ -26,6 +27,13 @@ var _attack_move_dest := Vector3.ZERO
 
 func _ready() -> void:
 	hp = max_hp
+
+	_nav_agent = NavigationAgent3D.new()
+	_nav_agent.path_desired_distance = 0.5
+	_nav_agent.target_desired_distance = 0.5
+	_nav_agent.avoidance_enabled = true
+	_nav_agent.radius = 0.45
+	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -41,7 +49,6 @@ func _ready() -> void:
 	_mesh.position.y = 0.0
 	add_child(_mesh)
 
-	# Small "gun barrel" to distinguish from workers
 	var barrel := MeshInstance3D.new()
 	var barrel_mesh := CylinderMesh.new()
 	barrel_mesh.top_radius = 0.08
@@ -97,11 +104,13 @@ func _physics_process(delta: float) -> void:
 func command_move(target: Vector3) -> void:
 	_attack_target = null
 	_move_target = target
+	_nav_agent.target_position = target
 	_state = State.MOVING
 
 func command_attack_move(target: Vector3) -> void:
 	_attack_move_dest = target
 	_move_target = target
+	_nav_agent.target_position = target
 	_attack_target = null
 	_state = State.ATTACK_MOVE
 
@@ -120,24 +129,29 @@ func take_damage(amount: int, _attacker: Node3D = null) -> void:
 		queue_free()
 
 func _do_move() -> void:
-	var diff := _move_target - global_position
-	diff.y = 0.0
-	if diff.length() < 0.6:
+	if _nav_agent.is_navigation_finished():
 		velocity = Vector3.ZERO
 		_state = State.IDLE
 		return
-	velocity = diff.normalized() * move_speed
-	_face_direction(diff)
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
+		_face_direction(dir)
 
 func _do_move_to(target: Vector3) -> void:
-	var diff := target - global_position
-	diff.y = 0.0
-	if diff.length() < 0.6:
+	_nav_agent.target_position = target
+	if _nav_agent.is_navigation_finished():
 		velocity = Vector3.ZERO
 		_state = State.IDLE
 		return
-	velocity = diff.normalized() * move_speed
-	_face_direction(diff)
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
+		_face_direction(dir)
 
 func _do_attack(_delta: float) -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
@@ -150,11 +164,14 @@ func _do_attack(_delta: float) -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		# Move closer
-		velocity = diff.normalized() * move_speed
-		_face_direction(diff)
+		_nav_agent.target_position = _attack_target.global_position
+		var next_pos := _nav_agent.get_next_path_position()
+		var dir := next_pos - global_position
+		dir.y = 0.0
+		if dir.length() > 0.01:
+			velocity = dir.normalized() * move_speed
+			_face_direction(dir)
 	else:
-		# In range, stop and fire
 		velocity = Vector3.ZERO
 		_face_direction(diff)
 		if _attack_timer <= 0.0:
@@ -164,7 +181,6 @@ func _do_attack(_delta: float) -> void:
 func _fire_projectile() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
-	# Create a simple projectile
 	var proj := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.12
@@ -184,11 +200,10 @@ func _fire_projectile() -> void:
 
 	get_tree().current_scene.add_child(proj)
 
-	# Animate projectile with a tween
 	if target_ref != null and is_instance_valid(target_ref):
 		var target_pos: Vector3 = target_ref.global_position + Vector3(0, 0.5, 0)
-		var dist := proj.global_position.distance_to(target_pos)
-		var duration := dist / speed
+		var proj_dist := proj.global_position.distance_to(target_pos)
+		var duration := proj_dist / speed
 
 		var tween := get_tree().create_tween()
 		tween.tween_property(proj, "global_position", target_pos, duration)

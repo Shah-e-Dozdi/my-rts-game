@@ -13,6 +13,7 @@ const EnemyAIScript := preload("res://scripts/enemy_ai.gd")
 const HealthBarScript := preload("res://scripts/health_bar.gd")
 
 var _world: Node3D
+var _nav_region: NavigationRegion3D
 var _camera: Camera3D
 var _select_box: Control
 var _canvas: CanvasLayer
@@ -55,6 +56,10 @@ var _enemy_ai: Node
 # Floating text
 var _floating_texts: Array[Dictionary] = []
 
+# Game over
+var _game_over := false
+var _game_over_panel: PanelContainer = null
+
 func _ready() -> void:
 	for i in 10:
 		_control_groups.append([])
@@ -64,6 +69,7 @@ func _ready() -> void:
 	_build_ui()
 	_spawn_base()
 	_spawn_minerals()
+	_bake_nav_mesh()
 	_setup_enemy_ai()
 	_setup_ghost_materials()
 	_refresh_ui()
@@ -92,9 +98,22 @@ func _build_world() -> void:
 	env.environment = environment
 	_world.add_child(env)
 
+	# Navigation region wraps all walkable/obstacle geometry
+	_nav_region = NavigationRegion3D.new()
+	_nav_region.name = "NavRegion"
+	var nav_mesh := NavigationMesh.new()
+	nav_mesh.agent_radius = 0.6
+	nav_mesh.agent_height = 2.0
+	nav_mesh.cell_size = 0.5
+	nav_mesh.cell_height = 0.25
+	nav_mesh.agent_max_climb = 0.3
+	nav_mesh.parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	_nav_region.navigation_mesh = nav_mesh
+	_world.add_child(_nav_region)
+
 	var ground := StaticBody3D.new()
 	ground.name = "Ground"
-	_world.add_child(ground)
+	_nav_region.add_child(ground)
 
 	var ground_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
@@ -121,6 +140,11 @@ func _build_camera() -> void:
 	_camera.rotation_degrees = Vector3(-30, 0, 0)
 	_camera.set_script(CameraScript)
 	rig.add_child(_camera)
+
+# ─── NAVIGATION ──────────────────────────────────────────────
+
+func _bake_nav_mesh() -> void:
+	_nav_region.bake_navigation_mesh()
 
 # ─── UI ──────────────────────────────────────────────────────
 
@@ -194,7 +218,7 @@ func _build_minimap() -> void:
 func _spawn_base() -> void:
 	var hq := HQScene.instantiate()
 	hq.position = Vector3.ZERO
-	_world.add_child(hq)
+	_nav_region.add_child(hq)
 	_hq = hq
 	_hq.production_finished.connect(_on_production_finished)
 	_add_health_bar(_hq, 3.5, 2.0)
@@ -216,7 +240,7 @@ func _spawn_minerals() -> void:
 	for pos in positions:
 		var r := ResourceScene.instantiate()
 		r.position = pos
-		_world.add_child(r)
+		_nav_region.add_child(r)
 
 func _setup_enemy_ai() -> void:
 	_enemy_ai = Node.new()
@@ -237,6 +261,9 @@ func _setup_ghost_materials() -> void:
 # ─── MAIN LOOP ───────────────────────────────────────────────
 
 func _process(delta: float) -> void:
+	if _game_over:
+		return
+
 	if _dragging:
 		var mouse_pos := get_viewport().get_mouse_position()
 		var rect := Rect2(_drag_start, mouse_pos - _drag_start).abs()
@@ -265,8 +292,15 @@ func _process(delta: float) -> void:
 	_update_warning(delta)
 	_update_production_label()
 	_clean_dead_refs()
+	_refresh_ui()
+	_check_game_over()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _game_over:
+		if event is InputEventKey and event.pressed:
+			get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+		return
+
 	if event.is_action_pressed("ui_cancel"):
 		if _place_mode != PlaceMode.NONE:
 			_cancel_placement()
@@ -320,6 +354,65 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cancel_placement()
 				return
 			_on_right_click(event.position)
+
+# ─── GAME OVER ───────────────────────────────────────────────
+
+func _check_game_over() -> void:
+	if _game_over:
+		return
+	# Check if HQ is gone
+	if _hq == null or not is_instance_valid(_hq):
+		_trigger_game_over("Your HQ has been destroyed!")
+		return
+	# Also check if ALL buildings are gone
+	var buildings := get_tree().get_nodes_in_group("human_buildings")
+	var alive := 0
+	for b in buildings:
+		if is_instance_valid(b):
+			alive += 1
+	if alive == 0:
+		_trigger_game_over("All your buildings have been destroyed!")
+
+func _trigger_game_over(message: String) -> void:
+	_game_over = true
+
+	# Darken screen
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.6)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_canvas.add_child(overlay)
+
+	# Game over panel
+	_game_over_panel = PanelContainer.new()
+	_game_over_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_game_over_panel.custom_minimum_size = Vector2(400, 200)
+	_canvas.add_child(_game_over_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	_game_over_panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "DEFEAT"
+	title.add_theme_font_size_override("font_size", 36)
+	title.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var msg := Label.new()
+	msg.text = message
+	msg.add_theme_font_size_override("font_size", 18)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(msg)
+
+	var hint := Label.new()
+	hint.text = "Press any key to return to menu"
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.modulate = Color(0.7, 0.7, 0.7)
+	vbox.add_child(hint)
 
 # ─── SELECTION ───────────────────────────────────────────────
 
@@ -502,6 +595,7 @@ func _try_place_building(screen_pos: Vector2) -> void:
 			cost = 100
 
 	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
 		return
 
 	_minerals -= cost
@@ -510,16 +604,18 @@ func _try_place_building(screen_pos: Vector2) -> void:
 		PlaceMode.BARRACKS:
 			var b := BarracksScene.instantiate()
 			b.position = pos
-			_world.add_child(b)
+			_nav_region.add_child(b)
 			b.production_finished.connect(_on_production_finished)
 			_add_health_bar(b, 2.5, 2.0)
 		PlaceMode.SUPPLY_DEPOT:
 			var s := SupplyDepotScene.instantiate()
 			s.position = pos
-			_world.add_child(s)
+			_nav_region.add_child(s)
 			_add_health_bar(s, 2.0, 1.5)
 
 	_cancel_placement()
+	# Rebake nav mesh so units path around new building
+	_bake_nav_mesh()
 	_refresh_ui()
 
 func _can_place(pos: Vector3) -> bool:
@@ -719,21 +815,24 @@ func _refresh_ui() -> void:
 	var sel_text := ""
 	if _selected.size() > 0:
 		var first := _selected[0]
-		if first.is_in_group("workers"):
-			sel_text = "Workers: %d" % _selected.size()
-		elif first.is_in_group("combat_units"):
-			sel_text = "Soldiers: %d" % _selected.size()
-		elif first.is_in_group("barracks"):
-			sel_text = "Barracks"
-		elif first.is_in_group("supply_depots"):
-			sel_text = "Supply Depot"
-		elif first == _hq:
-			sel_text = "HQ"
+		if not is_instance_valid(first):
+			sel_text = "No selection"
 		else:
-			sel_text = "Selected: %d" % _selected.size()
+			if first.is_in_group("workers"):
+				sel_text = "Workers: %d" % _selected.size()
+			elif first.is_in_group("combat_units"):
+				sel_text = "Soldiers: %d" % _selected.size()
+			elif first.is_in_group("barracks"):
+				sel_text = "Barracks"
+			elif first.is_in_group("supply_depots"):
+				sel_text = "Supply Depot"
+			elif first == _hq:
+				sel_text = "HQ"
+			else:
+				sel_text = "Selected: %d" % _selected.size()
 
-		if _selected.size() == 1 and "hp" in first and "max_hp" in first:
-			sel_text += "  HP: %d/%d" % [first.hp, first.max_hp]
+			if _selected.size() == 1 and "hp" in first and "max_hp" in first:
+				sel_text += "  HP: %d/%d" % [first.hp, first.max_hp]
 	else:
 		sel_text = "No selection"
 

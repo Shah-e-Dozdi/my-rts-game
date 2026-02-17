@@ -11,6 +11,7 @@ signal unit_died(unit: Node3D)
 var hp: int
 var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
+var _nav_agent: NavigationAgent3D
 
 enum State { IDLE, MOVING, ATTACKING }
 
@@ -22,6 +23,13 @@ var _scan_timer := 0.0
 
 func _ready() -> void:
 	hp = max_hp
+
+	_nav_agent = NavigationAgent3D.new()
+	_nav_agent.path_desired_distance = 0.5
+	_nav_agent.target_desired_distance = 0.5
+	_nav_agent.avoidance_enabled = true
+	_nav_agent.radius = 0.5
+	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -36,7 +44,6 @@ func _ready() -> void:
 	_mesh.mesh = box_mesh
 	add_child(_mesh)
 
-	# Spike on front to show melee
 	var spike := MeshInstance3D.new()
 	var spike_mesh := CylinderMesh.new()
 	spike_mesh.top_radius = 0.0
@@ -81,6 +88,7 @@ func _physics_process(delta: float) -> void:
 func command_move(target: Vector3) -> void:
 	_attack_target = null
 	_move_target = target
+	_nav_agent.target_position = target
 	_state = State.MOVING
 
 func command_attack(target: Node3D) -> void:
@@ -89,7 +97,6 @@ func command_attack(target: Node3D) -> void:
 
 func take_damage(amount: int, _attacker: Node3D = null) -> void:
 	hp -= amount
-	# Flash red on hit
 	if is_instance_valid(_mesh):
 		var flash_mat := StandardMaterial3D.new()
 		flash_mat.albedo_color = Color(1.0, 1.0, 1.0)
@@ -103,14 +110,16 @@ func take_damage(amount: int, _attacker: Node3D = null) -> void:
 		queue_free()
 
 func _do_move() -> void:
-	var diff := _move_target - global_position
-	diff.y = 0.0
-	if diff.length() < 0.6:
+	if _nav_agent.is_navigation_finished():
 		velocity = Vector3.ZERO
 		_state = State.IDLE
 		return
-	velocity = diff.normalized() * move_speed
-	_face_direction(diff)
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
+		_face_direction(dir)
 
 func _do_attack(_delta: float) -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
@@ -123,8 +132,13 @@ func _do_attack(_delta: float) -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		velocity = diff.normalized() * move_speed
-		_face_direction(diff)
+		_nav_agent.target_position = _attack_target.global_position
+		var next_pos := _nav_agent.get_next_path_position()
+		var dir := next_pos - global_position
+		dir.y = 0.0
+		if dir.length() > 0.01:
+			velocity = dir.normalized() * move_speed
+			_face_direction(dir)
 	else:
 		velocity = Vector3.ZERO
 		_face_direction(diff)
@@ -135,7 +149,6 @@ func _do_attack(_delta: float) -> void:
 func _do_melee_hit() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
-	# Lunge animation
 	var orig_pos := _mesh.position
 	var tween := get_tree().create_tween()
 	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.3), 0.05)
@@ -149,7 +162,6 @@ func _auto_acquire_target() -> void:
 	var closest_dist := scan_range
 	var closest: Node3D = null
 
-	# Target player combat units first, then workers, then buildings
 	for group_name in ["player_units", "units", "human_buildings"]:
 		for target in get_tree().get_nodes_in_group(group_name):
 			if not is_instance_valid(target):
