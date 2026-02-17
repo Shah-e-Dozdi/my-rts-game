@@ -262,6 +262,7 @@ func _process(delta: float) -> void:
 
 	_recalc_supply()
 	_update_floating_texts(delta)
+	_update_warning(delta)
 	_update_production_label()
 	_clean_dead_refs()
 
@@ -449,9 +450,17 @@ func _clear_selection() -> void:
 	_selected.clear()
 
 func _clean_dead_refs() -> void:
-	_selected = _selected.filter(func(u: Node) -> bool: return u != null and is_instance_valid(u))
-	for i in _control_groups.size():
-		_control_groups[i] = _control_groups[i].filter(func(u: Node) -> bool: return u != null and is_instance_valid(u))
+	var i := _selected.size() - 1
+	while i >= 0:
+		if _selected[i] == null or not is_instance_valid(_selected[i]):
+			_selected.remove_at(i)
+		i -= 1
+	for g in _control_groups.size():
+		var j := _control_groups[g].size() - 1
+		while j >= 0:
+			if _control_groups[g][j] == null or not is_instance_valid(_control_groups[g][j]):
+				_control_groups[g].remove_at(j)
+			j -= 1
 
 # ─── BUILDING PLACEMENT ─────────────────────────────────────
 
@@ -533,11 +542,14 @@ func _snap_to_grid(pos: Vector3) -> Vector3:
 
 func _try_train_worker() -> void:
 	if _hq == null or not is_instance_valid(_hq):
+		_show_warning("No HQ!")
 		return
 	var cost: int = _hq.WORKER_COST
 	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
 		return
 	if _supply >= _max_supply:
+		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
 	_minerals -= cost
 	_hq.queue_worker(WorkerScene)
@@ -546,6 +558,7 @@ func _try_train_worker() -> void:
 func _try_train_soldier() -> void:
 	var barracks_list := get_tree().get_nodes_in_group("barracks")
 	if barracks_list.is_empty():
+		_show_warning("Build a Barracks first! [B]")
 		return
 	var barracks: Node3D = barracks_list[0]
 	if not barracks.has_method("queue_soldier"):
@@ -553,8 +566,10 @@ func _try_train_soldier() -> void:
 	var cost: int = barracks.SOLDIER_COST
 	var supply_cost: int = barracks.SOLDIER_SUPPLY
 	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
 		return
 	if _supply + supply_cost > _max_supply:
+		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
 	_minerals -= cost
 	barracks.queue_soldier(SoldierScene)
@@ -603,6 +618,31 @@ func _add_health_bar(target: Node3D, offset_y: float = 1.5, bar_width: float = 1
 	hb.set_script(HealthBarScript)
 	_world.add_child(hb)
 	hb.setup(target, offset_y, bar_width)
+
+# ─── WARNINGS ────────────────────────────────────────────────
+
+var _warning_label: Label = null
+var _warning_timer := 0.0
+
+func _show_warning(text: String) -> void:
+	if _warning_label == null:
+		_warning_label = Label.new()
+		_warning_label.add_theme_font_size_override("font_size", 20)
+		_warning_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+		_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_warning_label.position = Vector2(500, 400)
+		_canvas.add_child(_warning_label)
+	_warning_label.text = text
+	_warning_label.visible = true
+	_warning_timer = 2.0
+
+func _update_warning(delta: float) -> void:
+	if _warning_label == null or not _warning_label.visible:
+		return
+	_warning_timer -= delta
+	_warning_label.modulate.a = clampf(_warning_timer / 0.5, 0.0, 1.0)
+	if _warning_timer <= 0.0:
+		_warning_label.visible = false
 
 # ─── FLOATING TEXT ───────────────────────────────────────────
 
