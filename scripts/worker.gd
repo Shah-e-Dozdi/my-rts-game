@@ -1,12 +1,15 @@
 extends CharacterBody3D
 
 signal minerals_delivered(amount: int)
+signal unit_died(unit: Node3D)
 
 @export var move_speed := 6.0
 @export var gather_interval := 1.0
 @export var gather_per_tick := 5
 @export var carry_capacity := 10
+@export var max_hp := 40
 
+var hp: int
 var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
 var _mat_selected: StandardMaterial3D
@@ -23,6 +26,8 @@ var _hq: Node3D = null
 var _selected := false
 
 func _ready() -> void:
+	hp = max_hp
+
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.5
@@ -37,7 +42,6 @@ func _ready() -> void:
 	_mesh.mesh = cap_mesh
 	add_child(_mesh)
 
-	# Pre-create materials
 	_mat_default = StandardMaterial3D.new()
 	_mat_default.albedo_color = Color(1.0, 1.0, 1.0)
 
@@ -51,6 +55,8 @@ func _ready() -> void:
 
 	add_to_group("units")
 	add_to_group("selectable")
+	add_to_group("player_units")
+	add_to_group("workers")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -59,14 +65,12 @@ func _physics_process(delta: float) -> void:
 			_do_move()
 		State.GATHERING:
 			_do_gather(delta)
-			# Bob up and down while mining
 			_mesh.position.y = sin(Time.get_ticks_msec() * 0.006) * 0.2
 		State.RETURNING:
 			_do_return()
 		_:
 			velocity = Vector3.ZERO
 
-	# Reset mesh offset when not gathering
 	if _state != State.GATHERING:
 		_mesh.position.y = 0.0
 
@@ -91,6 +95,12 @@ func set_hq(hq: Node3D) -> void:
 func set_selected(value: bool) -> void:
 	_selected = value
 	_update_appearance()
+
+func take_damage(amount: int, _attacker: Node3D = null) -> void:
+	hp -= amount
+	if hp <= 0:
+		unit_died.emit(self)
+		queue_free()
 
 func _update_appearance() -> void:
 	if _selected:
