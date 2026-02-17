@@ -103,7 +103,8 @@ func _update_appearance() -> void:
 func _do_move() -> void:
 	var diff := _move_target - global_position
 	diff.y = 0.0
-	if diff.length() < 0.6:
+	var arrive_dist := 1.5 if _resource_target != null else 0.6
+	if diff.length() < arrive_dist:
 		velocity = Vector3.ZERO
 		if _resource_target != null and _carried < carry_capacity:
 			_state = State.GATHERING
@@ -155,7 +156,7 @@ func _do_return() -> void:
 		return
 	var diff := _hq.global_position - global_position
 	diff.y = 0.0
-	if diff.length() < 1.8:
+	if diff.length() < 3.0:
 		velocity = Vector3.ZERO
 		if _carried > 0:
 			minerals_delivered.emit(_carried)
