@@ -249,6 +249,11 @@ func _setup_enemy_ai() -> void:
 	add_child(_enemy_ai)
 	_enemy_ai.setup(_world)
 
+	# Add health bar to the enemy HQ
+	var enemy_hq := _enemy_ai.get_enemy_hq()
+	if enemy_hq != null:
+		_add_health_bar(enemy_hq, 4.5, 3.0)
+
 func _setup_ghost_materials() -> void:
 	_ghost_mat_valid = StandardMaterial3D.new()
 	_ghost_mat_valid.albedo_color = Color(0.2, 0.8, 0.3, 0.4)
@@ -360,11 +365,16 @@ func _unhandled_input(event: InputEvent) -> void:
 func _check_game_over() -> void:
 	if _game_over:
 		return
-	# Check if HQ is gone
+	# Victory: enemy HQ destroyed
+	var enemy_hq := _enemy_ai.get_enemy_hq()
+	if enemy_hq == null or not is_instance_valid(enemy_hq):
+		_trigger_victory()
+		return
+	# Defeat: player HQ destroyed
 	if _hq == null or not is_instance_valid(_hq):
 		_trigger_game_over("Your HQ has been destroyed!")
 		return
-	# Also check if ALL buildings are gone
+	# Also check if ALL player buildings are gone
 	var buildings := get_tree().get_nodes_in_group("human_buildings")
 	var alive := 0
 	for b in buildings:
@@ -413,6 +423,45 @@ func _trigger_game_over(message: String) -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.modulate = Color(0.7, 0.7, 0.7)
 	vbox.add_child(hint)
+
+func _trigger_victory() -> void:
+	_game_over = true
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.5)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_canvas.add_child(overlay)
+
+	_game_over_panel = PanelContainer.new()
+	_game_over_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_game_over_panel.custom_minimum_size = Vector2(400, 200)
+	_canvas.add_child(_game_over_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	_game_over_panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "VICTORY"
+	title.add_theme_font_size_override("font_size", 36)
+	title.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var msg := Label.new()
+	msg.text = "The enemy base has been destroyed!"
+	msg.add_theme_font_size_override("font_size", 18)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(msg)
+
+	var hint2 := Label.new()
+	hint2.text = "Press any key to return to menu"
+	hint2.add_theme_font_size_override("font_size", 14)
+	hint2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint2.modulate = Color(0.7, 0.7, 0.7)
+	vbox.add_child(hint2)
 
 # ─── SELECTION ───────────────────────────────────────────────
 
@@ -803,10 +852,11 @@ func _find_resource(collider: Object) -> Node3D:
 func _find_enemy(collider: Object) -> Node3D:
 	if collider == null:
 		return null
-	if collider is Node and collider.is_in_group("enemy_units"):
-		return collider
-	if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group("enemy_units"):
-		return collider.get_parent()
+	for group_name in ["enemy_units", "enemy_buildings"]:
+		if collider is Node and collider.is_in_group(group_name):
+			return collider
+		if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group(group_name):
+			return collider.get_parent()
 	return null
 
 # ─── UI REFRESH ──────────────────────────────────────────────
@@ -828,6 +878,8 @@ func _refresh_ui() -> void:
 				sel_text = "Supply Depot"
 			elif first == _hq:
 				sel_text = "HQ"
+			elif first.is_in_group("enemy_buildings"):
+				sel_text = "Enemy HQ"
 			else:
 				sel_text = "Selected: %d" % _selected.size()
 
@@ -853,6 +905,7 @@ func _update_command_panel() -> void:
 	else:
 		help_text += "\n[B] Build Barracks (150)  [V] Supply Depot (100)"
 		help_text += "\n[Q] Train Worker (50)  [R] Train Soldier (75, needs Barracks)"
+		help_text += "\nObjective: Destroy the enemy base!"
 
 	var lbl := Label.new()
 	lbl.text = help_text

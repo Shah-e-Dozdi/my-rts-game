@@ -1,6 +1,7 @@
 extends Node
 
 const EnemyMeleeScene := preload("res://scenes/EnemyMelee.tscn")
+const EnemyHQScene := preload("res://scenes/EnemyHQ.tscn")
 
 var _world: Node3D
 var _spawn_point := Vector3(80, 0, -80)
@@ -9,8 +10,8 @@ var _wave_interval := 45.0
 var _wave_number := 0
 var _min_interval := 20.0
 
-# Enemy base visual
-var _enemy_hq: MeshInstance3D
+var _enemy_hq: Node3D = null
+var _hq_destroyed := false
 
 func setup(world: Node3D) -> void:
 	_world = world
@@ -19,33 +20,28 @@ func setup(world: Node3D) -> void:
 	_wave_timer = _wave_interval - 15.0
 
 func _build_enemy_base() -> void:
-	# Visual-only enemy HQ
-	var base := Node3D.new()
-	base.name = "EnemyBase"
-	base.position = _spawn_point
-	_world.add_child(base)
+	_enemy_hq = EnemyHQScene.instantiate()
+	_enemy_hq.position = _spawn_point
+	_world.add_child(_enemy_hq)
+	_enemy_hq.destroyed.connect(_on_enemy_hq_destroyed)
 
-	_enemy_hq = MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(5, 2.5, 5)
-	_enemy_hq.mesh = box_mesh
-	_enemy_hq.position = Vector3(0, 1.25, 0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.6, 0.1, 0.1)
-	_enemy_hq.material_override = mat
-	base.add_child(_enemy_hq)
+	# Spawn a few starting defenders
+	for i in 3:
+		var guard := EnemyMeleeScene.instantiate()
+		var angle := TAU * float(i) / 3.0
+		guard.position = _spawn_point + Vector3(cos(angle) * 6.0, 0, sin(angle) * 6.0)
+		_world.add_child(guard)
 
-	# Collision for the enemy base
-	var body := StaticBody3D.new()
-	base.add_child(body)
-	var col := CollisionShape3D.new()
-	var box_shape := BoxShape3D.new()
-	box_shape.size = Vector3(5, 2.5, 5)
-	col.shape = box_shape
-	col.position = Vector3(0, 1.25, 0)
-	body.add_child(col)
+func get_enemy_hq() -> Node3D:
+	return _enemy_hq
+
+func _on_enemy_hq_destroyed() -> void:
+	_hq_destroyed = true
 
 func _process(delta: float) -> void:
+	if _hq_destroyed:
+		return
+
 	_wave_timer += delta
 	if _wave_timer >= _wave_interval:
 		_wave_timer = 0.0
