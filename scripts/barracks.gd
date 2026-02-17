@@ -14,6 +14,10 @@ const SOLDIER_COST := 75
 const SOLDIER_SUPPLY := 2
 const SOLDIER_BUILD_TIME := 8.0
 
+const SCOUT_COST := 40
+const SCOUT_SUPPLY := 1
+const SCOUT_BUILD_TIME := 6.0
+
 func _ready() -> void:
 	hp = max_hp
 
@@ -68,6 +72,11 @@ func _process(delta: float) -> void:
 
 func queue_soldier(scene: PackedScene) -> void:
 	_queue.append({"scene": scene, "build_time": SOLDIER_BUILD_TIME})
+	if _queue.size() == 1:
+		_build_timer = 0.0
+
+func queue_scout(scene: PackedScene) -> void:
+	_queue.append({"scene": scene, "build_time": SCOUT_BUILD_TIME})
 	if _queue.size() == 1:
 		_build_timer = 0.0
 

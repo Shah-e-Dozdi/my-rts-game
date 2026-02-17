@@ -11,6 +11,7 @@ signal unit_died(unit: Node3D)
 @export var attack_damage := 5
 @export var attack_range := 1.8
 @export var attack_cooldown := 1.0
+@export var vision_range := 12.0
 
 var hp: int
 var _mesh: MeshInstance3D

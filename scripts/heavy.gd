@@ -2,13 +2,13 @@ extends CharacterBody3D
 
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 5.0
-@export var attack_range := 12.0
-@export var attack_damage := 8
-@export var attack_cooldown := 1.2
-@export var max_hp := 60
-@export var projectile_speed := 20.0
-@export var vision_range := 14.0
+@export var move_speed := 3.0
+@export var attack_range := 2.0
+@export var attack_damage := 15
+@export var attack_cooldown := 1.5
+@export var max_hp := 200
+@export var vision_range := 10.0
+@export var splash_radius := 3.0
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -33,38 +33,49 @@ func _ready() -> void:
 	_nav_agent.path_desired_distance = 0.5
 	_nav_agent.target_desired_distance = 0.5
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.45
+	_nav_agent.radius = 0.6
 	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.45
-	capsule.height = 1.2
+	capsule.radius = 0.6
+	capsule.height = 1.4
 	col.shape = capsule
 	add_child(col)
 
+	# Big, boxy body
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.7, 1.2, 0.7)
+	box_mesh.size = Vector3(1.2, 1.4, 1.0)
 	_mesh.mesh = box_mesh
 	_mesh.position.y = 0.0
 	add_child(_mesh)
 
-	var barrel := MeshInstance3D.new()
-	var barrel_mesh := CylinderMesh.new()
-	barrel_mesh.top_radius = 0.08
-	barrel_mesh.bottom_radius = 0.08
-	barrel_mesh.height = 0.6
-	barrel.mesh = barrel_mesh
-	barrel.rotation_degrees.x = 90
-	barrel.position = Vector3(0, 0.3, -0.5)
-	var barrel_mat := StandardMaterial3D.new()
-	barrel_mat.albedo_color = Color(0.3, 0.3, 0.3)
-	barrel.material_override = barrel_mat
-	_mesh.add_child(barrel)
+	# Shoulder armor plates
+	for side in [-1.0, 1.0]:
+		var plate := MeshInstance3D.new()
+		var plate_mesh := BoxMesh.new()
+		plate_mesh.size = Vector3(0.3, 0.5, 0.8)
+		plate.mesh = plate_mesh
+		plate.position = Vector3(side * 0.7, 0.3, 0.0)
+		var plate_mat := StandardMaterial3D.new()
+		plate_mat.albedo_color = Color(0.4, 0.35, 0.15)
+		plate.material_override = plate_mat
+		_mesh.add_child(plate)
+
+	# Fist weapon
+	var fist := MeshInstance3D.new()
+	var fist_mesh := BoxMesh.new()
+	fist_mesh.size = Vector3(0.4, 0.4, 0.4)
+	fist.mesh = fist_mesh
+	fist.position = Vector3(0, -0.2, -0.6)
+	var fist_mat := StandardMaterial3D.new()
+	fist_mat.albedo_color = Color(0.5, 0.5, 0.55)
+	fist.material_override = fist_mat
+	_mesh.add_child(fist)
 
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.2, 0.5, 0.9)
+	_mat_default.albedo_color = Color(0.55, 0.5, 0.2)
 
 	_mat_selected = StandardMaterial3D.new()
 	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
@@ -75,6 +86,7 @@ func _ready() -> void:
 	add_to_group("selectable")
 	add_to_group("player_units")
 	add_to_group("combat_units")
+	add_to_group("heavies")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -139,13 +151,11 @@ func _do_move() -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly (nav mesh may carve out target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
 		return
 
-	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -168,7 +178,6 @@ func _do_move_to(target: Vector3) -> void:
 		_state = State.IDLE
 		return
 
-	# Close to target: move directly
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -195,8 +204,12 @@ func _do_attack(_delta: float) -> void:
 	diff.y = 0.0
 	var dist := diff.length()
 
-	if dist > attack_range:
-		# Close enough to go direct (nav mesh may carve out building area)
+	# Buildings are large - use extra range
+	var eff_range := attack_range
+	if _attack_target.is_in_group("enemy_buildings"):
+		eff_range += 3.0
+
+	if dist > eff_range:
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			_face_direction(diff)
@@ -213,46 +226,59 @@ func _do_attack(_delta: float) -> void:
 		_face_direction(diff)
 		if _attack_timer <= 0.0:
 			_attack_timer = attack_cooldown
-			_fire_projectile()
+			_do_melee_slam()
 
-func _fire_projectile() -> void:
+func _do_melee_slam() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
-	var proj := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.12
-	sphere.height = 0.24
-	proj.mesh = sphere
+	# Punch animation
+	var orig_pos := _mesh.position
+	var tween := get_tree().create_tween()
+	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.4), 0.08)
+	tween.tween_property(_mesh, "position", orig_pos, 0.15)
+
+	# Hit primary target
+	var hit_pos := _attack_target.global_position
+	if _attack_target.has_method("take_damage"):
+		_attack_target.take_damage(attack_damage, self)
+
+	# Splash damage to nearby enemies
+	for enemy in get_tree().get_nodes_in_group("enemy_units"):
+		if not is_instance_valid(enemy):
+			continue
+		if enemy == _attack_target:
+			continue
+		var splash_dist := enemy.global_position.distance_to(hit_pos)
+		if splash_dist <= splash_radius:
+			if enemy.has_method("take_damage"):
+				var splash_dmg := int(attack_damage * 0.5)
+				enemy.take_damage(splash_dmg, self)
+
+	# Ground slam visual
+	_spawn_slam_effect(hit_pos)
+
+func _spawn_slam_effect(pos: Vector3) -> void:
+	var ring := MeshInstance3D.new()
+	var torus := CylinderMesh.new()
+	torus.top_radius = splash_radius
+	torus.bottom_radius = splash_radius
+	torus.height = 0.05
+	ring.mesh = torus
+	ring.global_position = pos + Vector3(0, 0.1, 0)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.8, 0.2)
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.6, 0.1)
-	mat.emission_energy_multiplier = 2.0
-	proj.material_override = mat
-	proj.global_position = global_position + Vector3(0, 0.6, 0)
+	mat.albedo_color = Color(1.0, 0.7, 0.2, 0.6)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring.material_override = mat
+	get_tree().current_scene.add_child(ring)
 
-	var target_ref := _attack_target
-	var damage := attack_damage
-	var speed := projectile_speed
-
-	get_tree().current_scene.add_child(proj)
-
-	if target_ref != null and is_instance_valid(target_ref):
-		var target_pos: Vector3 = target_ref.global_position + Vector3(0, 0.5, 0)
-		var proj_dist := proj.global_position.distance_to(target_pos)
-		var duration := proj_dist / speed
-
-		var tween := get_tree().create_tween()
-		tween.tween_property(proj, "global_position", target_pos, duration)
-		tween.tween_callback(func() -> void:
-			if is_instance_valid(proj):
-				proj.queue_free()
-			if is_instance_valid(target_ref) and target_ref.has_method("take_damage"):
-				target_ref.take_damage(damage, self)
-		)
+	var tween := get_tree().create_tween()
+	tween.tween_property(ring, "scale", Vector3(1.3, 1.0, 1.3), 0.3)
+	tween.parallel().tween_property(mat, "albedo_color", Color(1.0, 0.7, 0.2, 0.0), 0.3)
+	tween.tween_callback(ring.queue_free)
 
 func _auto_acquire_target() -> void:
-	var closest_dist := attack_range * 1.5
+	var closest_dist := 8.0
 	var closest: Node3D = null
 	for group_name in ["enemy_units", "enemy_buildings"]:
 		for enemy in get_tree().get_nodes_in_group(group_name):
