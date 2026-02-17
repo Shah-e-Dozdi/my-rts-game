@@ -3,10 +3,12 @@ extends Node3D
 const WorkerScene := preload("res://scenes/Worker.tscn")
 const HQScene := preload("res://scenes/HQ.tscn")
 const ResourceScene := preload("res://scenes/ResourceNode.tscn")
+const CameraScript := preload("res://scripts/camera_controller.gd")
 
-@onready var _sel_label: Label = $UI/Panel/SelectionLabel
-@onready var _help_label: Label = $UI/Panel/HelpLabel
-@onready var _camera: Camera3D = $CameraRig/Camera3D
+var _world: Node3D
+var _sel_label: Label
+var _help_label: Label
+var _camera: Camera3D
 
 var _selected: Array[Node] = []
 var _minerals := 50
@@ -16,9 +18,64 @@ var _max_supply := 15
 var _hq: Node3D = null
 
 func _ready() -> void:
+	_build_world()
+	_build_camera()
+	_build_ui()
 	_spawn_base()
 	_spawn_minerals()
 	_refresh_ui()
+
+func _build_world() -> void:
+	_world = Node3D.new()
+	_world.name = "World"
+	add_child(_world)
+
+	var ground := StaticBody3D.new()
+	ground.name = "Ground"
+	_world.add_child(ground)
+
+	var ground_mesh := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(200, 200)
+	ground_mesh.mesh = plane
+	ground.add_child(ground_mesh)
+
+	var ground_col := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(200, 0.1, 200)
+	ground_col.shape = box
+	ground.add_child(ground_col)
+
+func _build_camera() -> void:
+	var rig := Node3D.new()
+	rig.name = "CameraRig"
+	add_child(rig)
+
+	_camera = Camera3D.new()
+	_camera.position = Vector3(0, 30, 30)
+	_camera.rotation_degrees = Vector3(-30, 0, 0)
+	_camera.set_script(CameraScript)
+	rig.add_child(_camera)
+
+func _build_ui() -> void:
+	var canvas := CanvasLayer.new()
+	canvas.name = "UI"
+	add_child(canvas)
+
+	var panel := Panel.new()
+	panel.name = "Panel"
+	canvas.add_child(panel)
+
+	_sel_label = Label.new()
+	_sel_label.name = "SelectionLabel"
+	_sel_label.text = "Selection: 0"
+	panel.add_child(_sel_label)
+
+	_help_label = Label.new()
+	_help_label.name = "HelpLabel"
+	_help_label.position = Vector2(0, 24)
+	_help_label.text = "LMB: Select  RMB: Move/Gather"
+	panel.add_child(_help_label)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):
@@ -33,7 +90,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _spawn_base() -> void:
 	var hq := HQScene.instantiate()
 	hq.position = Vector3.ZERO
-	$World.add_child(hq)
+	_world.add_child(hq)
 	_hq = hq
 	for i in 6:
 		var w := WorkerScene.instantiate()
@@ -41,7 +98,7 @@ func _spawn_base() -> void:
 		w.position = Vector3(cos(angle) * 4.0, 0.0, sin(angle) * 4.0 + 6.0)
 		w.set_hq(_hq)
 		w.minerals_delivered.connect(_on_minerals)
-		$World.add_child(w)
+		_world.add_child(w)
 
 func _spawn_minerals() -> void:
 	var positions := [
@@ -51,7 +108,7 @@ func _spawn_minerals() -> void:
 	for pos in positions:
 		var r := ResourceScene.instantiate()
 		r.position = pos
-		$World.add_child(r)
+		_world.add_child(r)
 
 func _on_left_click(screen_pos: Vector2) -> void:
 	_clear_selection()
