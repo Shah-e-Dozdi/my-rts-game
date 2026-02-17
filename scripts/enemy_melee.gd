@@ -20,9 +20,13 @@ var _move_target := Vector3.ZERO
 var _attack_target: Node3D = null
 var _attack_timer := 0.0
 var _scan_timer := 0.0
+# Offset angle for spreading around buildings
+var _building_angle_offset := 0.0
 
 func _ready() -> void:
 	hp = max_hp
+	# Each unit gets a random angle offset so they spread around buildings
+	_building_angle_offset = randf_range(-PI, PI)
 
 	_nav_agent = NavigationAgent3D.new()
 	_nav_agent.path_desired_distance = 0.5
@@ -109,6 +113,15 @@ func take_damage(amount: int, _attacker: Node3D = null) -> void:
 		unit_died.emit(self)
 		queue_free()
 
+func _is_building(node: Node3D) -> bool:
+	return node.is_in_group("human_buildings") or node.is_in_group("enemy_buildings")
+
+func _get_effective_range(target: Node3D) -> float:
+	# Buildings are large - measure from edge not center
+	if _is_building(target):
+		return attack_range + 3.0
+	return attack_range
+
 func _do_move() -> void:
 	var to_target := _move_target - global_position
 	to_target.y = 0.0
@@ -146,14 +159,20 @@ func _do_attack(_delta: float) -> void:
 	var diff := _attack_target.global_position - global_position
 	diff.y = 0.0
 	var dist := diff.length()
+	var eff_range := _get_effective_range(_attack_target)
 
-	if dist > attack_range:
-		# Close enough to go direct (nav mesh may carve out building area)
+	if dist > eff_range:
+		# For buildings, path to a spread-out perimeter point
+		var target_pos := _attack_target.global_position
+		if _is_building(_attack_target):
+			var approach_dir := Vector3(cos(_building_angle_offset), 0, sin(_building_angle_offset))
+			target_pos = _attack_target.global_position + approach_dir * 3.5
+
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			_face_direction(diff)
 		else:
-			_nav_agent.target_position = _attack_target.global_position
+			_nav_agent.target_position = target_pos
 			var next_pos := _nav_agent.get_next_path_position()
 			var dir := next_pos - global_position
 			dir.y = 0.0
