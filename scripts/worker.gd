@@ -137,21 +137,12 @@ func _update_appearance() -> void:
 		_mesh.material_override = _mat_default
 
 func _do_move() -> void:
-	if _nav_agent.is_navigation_finished():
-		velocity = Vector3.ZERO
-		if _resource_target != null and _carried < carry_capacity:
-			_state = State.GATHERING
-			_gather_timer = 0.0
-		elif _carried > 0 and _hq != null:
-			_state = State.RETURNING
-		else:
-			_state = State.IDLE
-		return
-
-	var arrive_dist := 1.5 if _resource_target != null else 0.5
 	var to_target := _move_target - global_position
 	to_target.y = 0.0
-	if to_target.length() < arrive_dist:
+	var target_dist := to_target.length()
+
+	var arrive_dist := 1.5 if _resource_target != null else 0.5
+	if target_dist < arrive_dist:
 		velocity = Vector3.ZERO
 		if _resource_target != null and _carried < carry_capacity:
 			_state = State.GATHERING
@@ -162,6 +153,15 @@ func _do_move() -> void:
 			_state = State.IDLE
 		return
 
+	# Close to target: move directly (nav mesh may carve out the target area)
+	if target_dist < 5.0:
+		velocity = to_target.normalized() * move_speed
+		return
+
+	# Far away: use navigation agent for pathfinding around obstacles
+	if _nav_agent.is_navigation_finished():
+		velocity = to_target.normalized() * move_speed
+		return
 	var next_pos := _nav_agent.get_next_path_position()
 	var dir := next_pos - global_position
 	dir.y = 0.0
@@ -204,12 +204,14 @@ func _head_to_hq() -> void:
 	_state = State.RETURNING
 
 func _do_return() -> void:
-	if _hq == null:
+	if _hq == null or not is_instance_valid(_hq):
 		_state = State.IDLE
 		return
 	var diff := _hq.global_position - global_position
 	diff.y = 0.0
-	if diff.length() < 3.0:
+	var dist := diff.length()
+
+	if dist < 3.0:
 		velocity = Vector3.ZERO
 		if _carried > 0:
 			minerals_delivered.emit(_carried)
@@ -223,6 +225,15 @@ func _do_return() -> void:
 			_state = State.IDLE
 		return
 
+	# Close to HQ: move directly (nav mesh carves out HQ area)
+	if dist < 5.0:
+		velocity = diff.normalized() * move_speed
+		return
+
+	# Far away: use navigation agent
+	if _nav_agent.is_navigation_finished():
+		velocity = diff.normalized() * move_speed
+		return
 	var next_pos := _nav_agent.get_next_path_position()
 	var dir := next_pos - global_position
 	dir.y = 0.0
@@ -240,13 +251,18 @@ func _do_attack() -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		_nav_agent.target_position = _attack_target.global_position
-		var next_pos := _nav_agent.get_next_path_position()
-		var dir := next_pos - global_position
-		dir.y = 0.0
-		if dir.length() > 0.01:
-			velocity = dir.normalized() * move_speed
-			rotation.y = atan2(dir.x, dir.z)
+		# Close enough to go direct (nav mesh may carve out building area)
+		if dist < 5.0:
+			velocity = diff.normalized() * move_speed
+			rotation.y = atan2(diff.x, diff.z)
+		else:
+			_nav_agent.target_position = _attack_target.global_position
+			var next_pos := _nav_agent.get_next_path_position()
+			var dir := next_pos - global_position
+			dir.y = 0.0
+			if dir.length() > 0.01:
+				velocity = dir.normalized() * move_speed
+				rotation.y = atan2(dir.x, dir.z)
 	else:
 		velocity = Vector3.ZERO
 		if diff.length() > 0.01:

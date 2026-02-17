@@ -110,9 +110,25 @@ func take_damage(amount: int, _attacker: Node3D = null) -> void:
 		queue_free()
 
 func _do_move() -> void:
-	if _nav_agent.is_navigation_finished():
+	var to_target := _move_target - global_position
+	to_target.y = 0.0
+	var target_dist := to_target.length()
+
+	if target_dist < 0.5:
 		velocity = Vector3.ZERO
 		_state = State.IDLE
+		return
+
+	# Close to target: move directly (nav mesh may carve out target area)
+	if target_dist < 5.0:
+		velocity = to_target.normalized() * move_speed
+		_face_direction(to_target)
+		return
+
+	# Far away: use navigation agent
+	if _nav_agent.is_navigation_finished():
+		velocity = to_target.normalized() * move_speed
+		_face_direction(to_target)
 		return
 	var next_pos := _nav_agent.get_next_path_position()
 	var dir := next_pos - global_position
@@ -132,13 +148,18 @@ func _do_attack(_delta: float) -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		_nav_agent.target_position = _attack_target.global_position
-		var next_pos := _nav_agent.get_next_path_position()
-		var dir := next_pos - global_position
-		dir.y = 0.0
-		if dir.length() > 0.01:
-			velocity = dir.normalized() * move_speed
-			_face_direction(dir)
+		# Close enough to go direct (nav mesh may carve out building area)
+		if dist < 5.0:
+			velocity = diff.normalized() * move_speed
+			_face_direction(diff)
+		else:
+			_nav_agent.target_position = _attack_target.global_position
+			var next_pos := _nav_agent.get_next_path_position()
+			var dir := next_pos - global_position
+			dir.y = 0.0
+			if dir.length() > 0.01:
+				velocity = dir.normalized() * move_speed
+				_face_direction(dir)
 	else:
 		velocity = Vector3.ZERO
 		_face_direction(diff)
