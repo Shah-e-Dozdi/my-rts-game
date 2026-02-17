@@ -1,9 +1,12 @@
-[gd_scene load_steps=3 format=3 uid="uid://hq"]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/hq.gd" id="1"]
 
 [sub_resource type="BoxShape3D" id="1"]
 size = Vector3(4, 2, 4)
+
+[sub_resource type="BoxMesh" id="2"]
+size = Vector3(1, 1, 1)
 
 [node name="HQ" type="Node3D"]
 script = ExtResource("1")
@@ -15,5 +18,6 @@ shape = SubResource("1")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
 position = Vector3(0, 1, 0)
-mesh = BoxMesh.new()
+mesh = SubResource("2")
 scale = Vector3(4, 2, 4)
+
