@@ -7,7 +7,7 @@ signal minerals_delivered(amount: int)
 @export var gather_per_tick := 5
 @export var carry_capacity := 10
 
-@onready var _mesh: MeshInstance3D = $Mesh
+var _mesh: MeshInstance3D
 
 enum State { IDLE, MOVING, GATHERING, RETURNING }
 
@@ -20,6 +20,20 @@ var _hq: Node3D = null
 var _selected := false
 
 func _ready() -> void:
+	var col := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.5
+	capsule.height = 1.0
+	col.shape = capsule
+	add_child(col)
+
+	_mesh = MeshInstance3D.new()
+	var cap_mesh := CapsuleMesh.new()
+	cap_mesh.radius = 0.5
+	cap_mesh.height = 1.0
+	_mesh.mesh = cap_mesh
+	add_child(_mesh)
+
 	add_to_group("units")
 	add_to_group("selectable")
 	_move_target = global_position
