@@ -56,6 +56,9 @@ var _enemy_ai: Node
 # Floating text
 var _floating_texts: Array[Dictionary] = []
 
+# Attack-move cursor
+var _attack_cursor := false
+
 # Game over
 var _game_over := false
 var _game_over_panel: PanelContainer = null
@@ -307,6 +310,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.is_action_pressed("ui_cancel"):
+		if _attack_cursor:
+			_attack_cursor = false
+			return
 		if _place_mode != PlaceMode.NONE:
 			_cancel_placement()
 			return
@@ -326,6 +332,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
+		if key == KEY_A and _place_mode == PlaceMode.NONE and not _selected.is_empty():
+			_attack_cursor = true
+			return
+		if key == KEY_S:
+			# Stop command
+			for u in _selected:
+				if u != null and u.has_method("command_move"):
+					u.command_move(u.global_position)
+			return
 		if key == KEY_B and _place_mode == PlaceMode.NONE:
 			_start_placement(PlaceMode.BARRACKS)
 			return
@@ -342,6 +357,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
+				if _attack_cursor:
+					_on_attack_click(event.position)
+					_attack_cursor = false
+					return
 				if _place_mode != PlaceMode.NONE:
 					_try_place_building(event.position)
 					return
@@ -355,6 +374,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					_on_box_select(_drag_start, event.position, event.shift_pressed)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_attack_cursor = false
 			if _place_mode != PlaceMode.NONE:
 				_cancel_placement()
 				return
@@ -583,6 +603,28 @@ func _on_right_click(screen_pos: Vector2) -> void:
 
 	for u in _selected:
 		if u != null and u.has_method("command_move"):
+			u.command_move(hit.position)
+
+func _on_attack_click(screen_pos: Vector2) -> void:
+	if _selected.is_empty():
+		return
+	var hit := _raycast(screen_pos)
+	if hit.is_empty():
+		return
+
+	# If clicked directly on an enemy, attack that target
+	var enemy := _find_enemy(hit.get("collider"))
+	if enemy != null:
+		for u in _selected:
+			if u != null and u.has_method("command_attack"):
+				u.command_attack(enemy)
+		return
+
+	# Otherwise, attack-move to that ground position
+	for u in _selected:
+		if u != null and u.has_method("command_attack_move"):
+			u.command_attack_move(hit.position)
+		elif u != null and u.has_method("command_move"):
 			u.command_move(hit.position)
 
 func _clear_selection() -> void:
@@ -895,12 +937,15 @@ func _update_command_panel() -> void:
 	for child in _command_panel.get_children():
 		child.queue_free()
 
-	var help_text := "WASD: Camera  Scroll: Zoom  Esc: Menu\n"
+	var help_text := "Mouse Edge: Camera  Scroll: Zoom  Esc: Menu\n"
 	help_text += "LMB: Select  RMB: Move/Gather/Attack\n"
+	help_text += "[A]+LMB: Attack-Move  [S]: Stop\n"
 	help_text += "Shift+Click: Add/Remove  DblClick: Select all of type\n"
 	help_text += "Ctrl+1-9: Set group  1-9: Recall group\n"
 
-	if _place_mode != PlaceMode.NONE:
+	if _attack_cursor:
+		help_text += "\n[ATTACK CURSOR] LMB: Attack target/ground  RMB/Esc: Cancel"
+	elif _place_mode != PlaceMode.NONE:
 		help_text += "\n[PLACING] LMB: Confirm  RMB/Esc: Cancel"
 	else:
 		help_text += "\n[B] Build Barracks (150)  [V] Supply Depot (100)"
