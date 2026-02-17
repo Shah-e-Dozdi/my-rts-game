@@ -107,7 +107,7 @@ func _build_world() -> void:
 	nav_mesh.cell_size = 0.5
 	nav_mesh.cell_height = 0.25
 	nav_mesh.agent_max_climb = 0.3
-	nav_mesh.parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	_nav_region.navigation_mesh = nav_mesh
 	_world.add_child(_nav_region)
 
