@@ -2,15 +2,20 @@ extends Node3D
 
 const WorkerScene := preload("res://scenes/Worker.tscn")
 const SoldierScene := preload("res://scenes/Soldier.tscn")
+const ScoutScene := preload("res://scenes/Scout.tscn")
+const SniperScene := preload("res://scenes/Sniper.tscn")
+const HeavyScene := preload("res://scenes/Heavy.tscn")
 const HQScene := preload("res://scenes/HQ.tscn")
 const BarracksScene := preload("res://scenes/Barracks.tscn")
 const SupplyDepotScene := preload("res://scenes/SupplyDepot.tscn")
+const ArmoryScene := preload("res://scenes/Armory.tscn")
 const ResourceScene := preload("res://scenes/ResourceNode.tscn")
 const EnemyMeleeScene := preload("res://scenes/EnemyMelee.tscn")
 const CameraScript := preload("res://scripts/camera_controller.gd")
 const SelectionBoxScript := preload("res://scripts/selection_box.gd")
 const EnemyAIScript := preload("res://scripts/enemy_ai.gd")
 const HealthBarScript := preload("res://scripts/health_bar.gd")
+const FogOfWarScript := preload("res://scripts/fog_of_war.gd")
 
 var _world: Node3D
 var _nav_region: NavigationRegion3D
@@ -44,7 +49,7 @@ var _max_supply := 15
 var _hq: Node3D = null
 
 # Building placement
-enum PlaceMode { NONE, BARRACKS, SUPPLY_DEPOT }
+enum PlaceMode { NONE, BARRACKS, SUPPLY_DEPOT, ARMORY }
 var _place_mode: PlaceMode = PlaceMode.NONE
 var _ghost: MeshInstance3D = null
 var _ghost_mat_valid: StandardMaterial3D
@@ -74,6 +79,7 @@ func _ready() -> void:
 	_spawn_minerals()
 	_bake_nav_mesh()
 	_setup_enemy_ai()
+	_setup_fog_of_war()
 	_setup_ghost_materials()
 	_refresh_ui()
 
@@ -257,6 +263,12 @@ func _setup_enemy_ai() -> void:
 	if enemy_hq != null:
 		_add_health_bar(enemy_hq, 4.5, 3.0)
 
+func _setup_fog_of_war() -> void:
+	var fog := Node3D.new()
+	fog.name = "FogOfWar"
+	fog.set_script(FogOfWarScript)
+	_world.add_child(fog)
+
 func _setup_ghost_materials() -> void:
 	_ghost_mat_valid = StandardMaterial3D.new()
 	_ghost_mat_valid.albedo_color = Color(0.2, 0.8, 0.3, 0.4)
@@ -293,6 +305,8 @@ func _process(delta: float) -> void:
 					_ghost.global_position.y = 0.9
 				PlaceMode.SUPPLY_DEPOT:
 					_ghost.global_position.y = 0.6
+				PlaceMode.ARMORY:
+					_ghost.global_position.y = 1.1
 			_ghost.material_override = _ghost_mat_valid if _can_place(snap_pos) else _ghost_mat_invalid
 
 	_recalc_supply()
@@ -347,11 +361,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key == KEY_V and _place_mode == PlaceMode.NONE:
 			_start_placement(PlaceMode.SUPPLY_DEPOT)
 			return
+		if key == KEY_T and _place_mode == PlaceMode.NONE:
+			_start_placement(PlaceMode.ARMORY)
+			return
 		if key == KEY_Q:
 			_try_train_worker()
 			return
 		if key == KEY_R:
 			_try_train_soldier()
+			return
+		if key == KEY_E:
+			_try_train_scout()
+			return
+		if key == KEY_F:
+			_try_train_sniper()
+			return
+		if key == KEY_G:
+			_try_train_heavy()
 			return
 
 	if event is InputEventMouseButton:
@@ -548,10 +574,18 @@ func _select_all_of_type(reference: Node) -> void:
 	var ref_groups := []
 	if reference.is_in_group("workers"):
 		ref_groups = ["workers"]
+	elif reference.is_in_group("scouts"):
+		ref_groups = ["scouts"]
+	elif reference.is_in_group("snipers"):
+		ref_groups = ["snipers"]
+	elif reference.is_in_group("heavies"):
+		ref_groups = ["heavies"]
 	elif reference.is_in_group("combat_units"):
 		ref_groups = ["combat_units"]
 	elif reference.is_in_group("barracks"):
 		ref_groups = ["barracks"]
+	elif reference.is_in_group("armories"):
+		ref_groups = ["armories"]
 	elif reference.is_in_group("supply_depots"):
 		ref_groups = ["supply_depots"]
 	else:
@@ -659,6 +693,8 @@ func _start_placement(mode: PlaceMode) -> void:
 			mesh.size = Vector3(4, 1.8, 3)
 		PlaceMode.SUPPLY_DEPOT:
 			mesh.size = Vector3(2.5, 1.2, 2.5)
+		PlaceMode.ARMORY:
+			mesh.size = Vector3(4, 2.2, 3.5)
 	_ghost.mesh = mesh
 	_ghost.material_override = _ghost_mat_valid
 	_world.add_child(_ghost)
@@ -684,6 +720,8 @@ func _try_place_building(screen_pos: Vector2) -> void:
 			cost = 150
 		PlaceMode.SUPPLY_DEPOT:
 			cost = 100
+		PlaceMode.ARMORY:
+			cost = 200
 
 	if _minerals < cost:
 		_show_warning("Not enough minerals! (need %d)" % cost)
@@ -703,6 +741,15 @@ func _try_place_building(screen_pos: Vector2) -> void:
 			s.position = pos
 			_nav_region.add_child(s)
 			_add_health_bar(s, 2.0, 1.5)
+		PlaceMode.ARMORY:
+			if get_tree().get_nodes_in_group("barracks").is_empty():
+				_show_warning("Build a Barracks first!")
+				return
+			var a := ArmoryScene.instantiate()
+			a.position = pos
+			_nav_region.add_child(a)
+			a.production_finished.connect(_on_production_finished)
+			_add_health_bar(a, 3.0, 2.0)
 
 	_cancel_placement()
 	# Rebake nav mesh so units path around new building
@@ -762,6 +809,66 @@ func _try_train_soldier() -> void:
 	barracks.queue_soldier(SoldierScene)
 	_refresh_ui()
 
+func _try_train_scout() -> void:
+	var barracks_list := get_tree().get_nodes_in_group("barracks")
+	if barracks_list.is_empty():
+		_show_warning("Build a Barracks first! [B]")
+		return
+	var barracks: Node3D = barracks_list[0]
+	if not barracks.has_method("queue_scout"):
+		return
+	var cost: int = barracks.SCOUT_COST
+	var supply_cost: int = barracks.SCOUT_SUPPLY
+	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
+		return
+	if _supply + supply_cost > _max_supply:
+		_show_warning("Supply capped! Build a Supply Depot [V]")
+		return
+	_minerals -= cost
+	barracks.queue_scout(ScoutScene)
+	_refresh_ui()
+
+func _try_train_sniper() -> void:
+	var armory_list := get_tree().get_nodes_in_group("armories")
+	if armory_list.is_empty():
+		_show_warning("Build an Armory first! [T]")
+		return
+	var armory: Node3D = armory_list[0]
+	if not armory.has_method("queue_sniper"):
+		return
+	var cost: int = armory.SNIPER_COST
+	var supply_cost: int = armory.SNIPER_SUPPLY
+	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
+		return
+	if _supply + supply_cost > _max_supply:
+		_show_warning("Supply capped! Build a Supply Depot [V]")
+		return
+	_minerals -= cost
+	armory.queue_sniper(SniperScene)
+	_refresh_ui()
+
+func _try_train_heavy() -> void:
+	var armory_list := get_tree().get_nodes_in_group("armories")
+	if armory_list.is_empty():
+		_show_warning("Build an Armory first! [T]")
+		return
+	var armory: Node3D = armory_list[0]
+	if not armory.has_method("queue_heavy"):
+		return
+	var cost: int = armory.HEAVY_COST
+	var supply_cost: int = armory.HEAVY_SUPPLY
+	if _minerals < cost:
+		_show_warning("Not enough minerals! (need %d)" % cost)
+		return
+	if _supply + supply_cost > _max_supply:
+		_show_warning("Supply capped! Build a Supply Depot [V]")
+		return
+	_minerals -= cost
+	armory.queue_heavy(HeavyScene)
+	_refresh_ui()
+
 func _on_production_finished(unit_scene: PackedScene, spawn_pos: Vector3) -> void:
 	var unit := unit_scene.instantiate()
 	unit.position = spawn_pos
@@ -794,6 +901,10 @@ func _recalc_supply() -> void:
 		if is_instance_valid(u):
 			if u.is_in_group("workers"):
 				used += 1
+			elif u.is_in_group("scouts"):
+				used += 1
+			elif u.is_in_group("heavies"):
+				used += 3
 			elif u.is_in_group("combat_units"):
 				used += 2
 	_supply = used
@@ -912,10 +1023,18 @@ func _refresh_ui() -> void:
 		else:
 			if first.is_in_group("workers"):
 				sel_text = "Workers: %d" % _selected.size()
+			elif first.is_in_group("scouts"):
+				sel_text = "Scouts: %d" % _selected.size()
+			elif first.is_in_group("snipers"):
+				sel_text = "Snipers: %d" % _selected.size()
+			elif first.is_in_group("heavies"):
+				sel_text = "Heavies: %d" % _selected.size()
 			elif first.is_in_group("combat_units"):
 				sel_text = "Soldiers: %d" % _selected.size()
 			elif first.is_in_group("barracks"):
 				sel_text = "Barracks"
+			elif first.is_in_group("armories"):
+				sel_text = "Armory"
 			elif first.is_in_group("supply_depots"):
 				sel_text = "Supply Depot"
 			elif first == _hq:
@@ -948,8 +1067,9 @@ func _update_command_panel() -> void:
 	elif _place_mode != PlaceMode.NONE:
 		help_text += "\n[PLACING] LMB: Confirm  RMB/Esc: Cancel"
 	else:
-		help_text += "\n[B] Build Barracks (150)  [V] Supply Depot (100)"
-		help_text += "\n[Q] Train Worker (50)  [R] Train Soldier (75, needs Barracks)"
+		help_text += "\n[B] Barracks (150)  [V] Supply Depot (100)  [T] Armory (200)"
+		help_text += "\n[Q] Worker (50)  [R] Soldier (75)  [E] Scout (40)"
+		help_text += "\n[F] Sniper (125, Armory)  [G] Heavy (150, Armory)"
 		help_text += "\nObjective: Destroy the enemy base!"
 
 	var lbl := Label.new()
@@ -966,6 +1086,11 @@ func _update_production_label() -> void:
 	for barracks in get_tree().get_nodes_in_group("barracks"):
 		if is_instance_valid(barracks) and barracks.get_queue_size() > 0:
 			var progress: float = barracks.get_build_progress()
-			text += "Barracks: Training soldier [%d%%] (queue: %d)\n" % [int(progress * 100), barracks.get_queue_size()]
+			text += "Barracks: Training [%d%%] (queue: %d)\n" % [int(progress * 100), barracks.get_queue_size()]
+
+	for armory in get_tree().get_nodes_in_group("armories"):
+		if is_instance_valid(armory) and armory.get_queue_size() > 0:
+			var progress: float = armory.get_build_progress()
+			text += "Armory: Training [%d%%] (queue: %d)\n" % [int(progress * 100), armory.get_queue_size()]
 
 	_production_label.text = text
