@@ -64,10 +64,12 @@ func set_home_hq(hq_node: Node3D) -> void:
 
 func set_selected(value: bool) -> void:
 	_selected = value
+	var mat := StandardMaterial3D.new()
 	if _selected:
-		_mesh.modulate = Color(0.5, 0.9, 1.0)
+		mat.albedo_color = Color(0.5, 0.9, 1.0)
 	else:
-		_mesh.modulate = Color(1.0, 1.0, 1.0)
+		mat.albedo_color = Color(1.0, 1.0, 1.0)
+	_mesh.material_override = mat
 
 func _move_towards_target() -> void:
 	var to_target := move_target - global_position
