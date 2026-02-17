@@ -4,11 +4,13 @@ const WorkerScene := preload("res://scenes/Worker.tscn")
 const HQScene := preload("res://scenes/HQ.tscn")
 const ResourceScene := preload("res://scenes/ResourceNode.tscn")
 const CameraScript := preload("res://scripts/camera_controller.gd")
+const SelectionBoxScript := preload("res://scripts/selection_box.gd")
 
 var _world: Node3D
 var _sel_label: Label
 var _help_label: Label
 var _camera: Camera3D
+var _select_box: Control
 
 var _selected: Array[Node] = []
 var _minerals := 50
@@ -16,6 +18,10 @@ var _gas := 0
 var _supply := 6
 var _max_supply := 15
 var _hq: Node3D = null
+
+var _drag_start := Vector2.ZERO
+var _dragging := false
+const DRAG_THRESHOLD := 5.0
 
 func _ready() -> void:
 	_build_world()
@@ -30,14 +36,12 @@ func _build_world() -> void:
 	_world.name = "World"
 	add_child(_world)
 
-	# Sun light so everything is visible
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-45, 30, 0)
 	sun.light_energy = 1.2
 	sun.shadow_enabled = true
 	_world.add_child(sun)
 
-	# Sky + ambient light
 	var env := WorldEnvironment.new()
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
@@ -49,7 +53,6 @@ func _build_world() -> void:
 	env.environment = environment
 	_world.add_child(env)
 
-	# Ground
 	var ground := StaticBody3D.new()
 	ground.name = "Ground"
 	_world.add_child(ground)
@@ -106,15 +109,42 @@ func _build_ui() -> void:
 	_help_label.text = "LMB: Select  RMB: Move/Gather"
 	vbox.add_child(_help_label)
 
+	# Drag selection rectangle
+	_select_box = Control.new()
+	_select_box.set_script(SelectionBoxScript)
+	_select_box.visible = false
+	_select_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	canvas.add_child(_select_box)
+
+func _process(_delta: float) -> void:
+	if _dragging:
+		var mouse_pos := get_viewport().get_mouse_position()
+		var rect := Rect2(_drag_start, mouse_pos - _drag_start).abs()
+		_select_box.position = rect.position
+		_select_box.size = rect.size
+		_select_box.queue_redraw()
+		if not _select_box.visible and _drag_start.distance_to(mouse_pos) > DRAG_THRESHOLD:
+			_select_box.visible = true
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton and event.pressed):
-		if event.is_action_pressed("ui_cancel"):
-			get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+	if event.is_action_pressed("ui_cancel"):
+		get_tree().change_scene_to_file("res://scenes/Menu.tscn")
 		return
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		_on_left_click(event.position)
-	elif event.button_index == MOUSE_BUTTON_RIGHT:
-		_on_right_click(event.position)
+
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_drag_start = event.position
+				_dragging = true
+			else:
+				_dragging = false
+				_select_box.visible = false
+				if _drag_start.distance_to(event.position) < DRAG_THRESHOLD:
+					_on_left_click(event.position)
+				else:
+					_on_box_select(_drag_start, event.position)
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_on_right_click(event.position)
 
 func _spawn_base() -> void:
 	var hq := HQScene.instantiate()
@@ -150,6 +180,17 @@ func _on_left_click(screen_pos: Vector2) -> void:
 		_selected.append(unit)
 		if unit.has_method("set_selected"):
 			unit.set_selected(true)
+	_refresh_ui()
+
+func _on_box_select(start: Vector2, end: Vector2) -> void:
+	_clear_selection()
+	var rect := Rect2(start, end - start).abs()
+	for unit in get_tree().get_nodes_in_group("units"):
+		var screen_pos := _camera.unproject_position(unit.global_position)
+		if rect.has_point(screen_pos):
+			_selected.append(unit)
+			if unit.has_method("set_selected"):
+				unit.set_selected(true)
 	_refresh_ui()
 
 func _on_right_click(screen_pos: Vector2) -> void:
