@@ -108,7 +108,7 @@ func _process_gathering(delta: float) -> void:
 		_begin_return_to_hq()
 		return
 
-	var harvested: int = _assigned_resource.harvest(min(gather_amount_per_tick, room_left))
+	var harvested := _assigned_resource.harvest(mini(gather_amount_per_tick, room_left))
 	if harvested <= 0:
 		_state = WorkerState.IDLE
 		_assigned_resource = null

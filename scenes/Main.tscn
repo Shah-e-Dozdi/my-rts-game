@@ -1,32 +1,32 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scripts/main.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/camera_controller.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/main.gd" id="script_main"]
+[ext_resource type="Script" path="res://scripts/camera_controller.gd" id="script_camera"]
 
-[sub_resource type="PlaneMesh" id="ground_mesh"]
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 size = Vector2(200, 200)
 
-[sub_resource type="BoxShape3D" id="ground_shape"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
 size = Vector3(200, 0.1, 200)
 
 [node name="Main" type="Node3D"]
-script = ExtResource("1")
+script = ExtResource("script_main")
 
 [node name="World" type="Node3D" parent="."]
 
 [node name="Ground" type="StaticBody3D" parent="World"]
 
 [node name="GroundMesh" type="MeshInstance3D" parent="World/Ground"]
-mesh = SubResource("ground_mesh")
+mesh = SubResource("PlaneMesh_ground")
 
 [node name="GroundCollision" type="CollisionShape3D" parent="World/Ground"]
-shape = SubResource("ground_shape")
+shape = SubResource("BoxShape3D_ground")
 
 [node name="CameraRig" type="Node3D" parent="."]
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
 transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 30, 30)
-script = ExtResource("2")
+script = ExtResource("script_camera")
 
 [node name="UI" type="CanvasLayer" parent="."]
 

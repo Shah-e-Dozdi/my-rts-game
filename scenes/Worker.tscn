@@ -1,20 +1,20 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scripts/worker.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/worker.gd" id="script_worker"]
 
-[sub_resource type="CapsuleMesh" id="1"]
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_w1"]
 radius = 0.5
 height = 1.0
 
-[sub_resource type="CapsuleShape3D" id="2"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_w1"]
 radius = 0.5
 height = 1.0
 
 [node name="Worker" type="CharacterBody3D"]
-script = ExtResource("1")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-shape = SubResource("2")
+script = ExtResource("script_worker")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
-mesh = SubResource("1")
+mesh = SubResource("CapsuleMesh_w1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_w1")
