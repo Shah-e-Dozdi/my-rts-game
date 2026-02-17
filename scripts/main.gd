@@ -30,6 +30,26 @@ func _build_world() -> void:
 	_world.name = "World"
 	add_child(_world)
 
+	# Sun light so everything is visible
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-45, 30, 0)
+	sun.light_energy = 1.2
+	sun.shadow_enabled = true
+	_world.add_child(sun)
+
+	# Sky + ambient light
+	var env := WorldEnvironment.new()
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	sky.sky_material = ProceduralSkyMaterial.new()
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_energy = 0.5
+	env.environment = environment
+	_world.add_child(env)
+
+	# Ground
 	var ground := StaticBody3D.new()
 	ground.name = "Ground"
 	_world.add_child(ground)
@@ -38,6 +58,9 @@ func _build_world() -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(200, 200)
 	ground_mesh.mesh = plane
+	var ground_mat := StandardMaterial3D.new()
+	ground_mat.albedo_color = Color(0.25, 0.4, 0.15)
+	ground_mesh.material_override = ground_mat
 	ground.add_child(ground_mesh)
 
 	var ground_col := CollisionShape3D.new()
@@ -62,20 +85,26 @@ func _build_ui() -> void:
 	canvas.name = "UI"
 	add_child(canvas)
 
-	var panel := Panel.new()
+	# Top-left info panel
+	var panel := PanelContainer.new()
 	panel.name = "Panel"
+	panel.position = Vector2(10, 10)
+	panel.custom_minimum_size = Vector2(300, 0)
 	canvas.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+	panel.add_child(vbox)
 
 	_sel_label = Label.new()
 	_sel_label.name = "SelectionLabel"
 	_sel_label.text = "Selection: 0"
-	panel.add_child(_sel_label)
+	vbox.add_child(_sel_label)
 
 	_help_label = Label.new()
 	_help_label.name = "HelpLabel"
-	_help_label.position = Vector2(0, 24)
 	_help_label.text = "LMB: Select  RMB: Move/Gather"
-	panel.add_child(_help_label)
+	vbox.add_child(_help_label)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed):
