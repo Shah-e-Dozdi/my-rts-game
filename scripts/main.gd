@@ -1,112 +1,100 @@
 extends Node3D
 
-const WORKER_SCENE := preload("res://scenes/Worker.tscn")
-const HQ_SCENE := preload("res://scenes/HQ.tscn")
-const RESOURCE_SCENE := preload("res://scenes/ResourceNode.tscn")
+const WorkerScene := preload("res://scenes/Worker.tscn")
+const HQScene := preload("res://scenes/HQ.tscn")
+const ResourceScene := preload("res://scenes/ResourceNode.tscn")
 
-@onready var selection_label: Label = $UI/Panel/SelectionLabel
-@onready var help_label: Label = $UI/Panel/HelpLabel
-@onready var camera: Camera3D = $CameraRig/Camera3D
+@onready var _sel_label: Label = $UI/Panel/SelectionLabel
+@onready var _help_label: Label = $UI/Panel/HelpLabel
+@onready var _camera: Camera3D = $CameraRig/Camera3D
 
-var selected_units: Array[Node] = []
-var player_minerals := 50
-var player_gas := 0
-var current_supply := 6
-var max_supply := 15
-var player_hq: Node3D
+var _selected: Array[Node] = []
+var _minerals := 50
+var _gas := 0
+var _supply := 6
+var _max_supply := 15
+var _hq: Node3D = null
 
 func _ready() -> void:
-	_spawn_starting_base()
-	_spawn_resources()
-	_update_ui()
+	_spawn_base()
+	_spawn_minerals()
+	_refresh_ui()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			_handle_left_click(event.position)
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			_handle_right_click(event.position)
-	elif event.is_action_pressed("ui_cancel"):
-		get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+	if not (event is InputEventMouseButton and event.pressed):
+		if event.is_action_pressed("ui_cancel"):
+			get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+		return
+	if event.button_index == MOUSE_BUTTON_LEFT:
+		_on_left_click(event.position)
+	elif event.button_index == MOUSE_BUTTON_RIGHT:
+		_on_right_click(event.position)
 
-func _spawn_starting_base() -> void:
-	var hq := HQ_SCENE.instantiate()
-	hq.position = Vector3(0.0, 0.0, 0.0)
+func _spawn_base() -> void:
+	var hq := HQScene.instantiate()
+	hq.position = Vector3.ZERO
 	$World.add_child(hq)
-	player_hq = hq
-
+	_hq = hq
 	for i in 6:
-		var worker := WORKER_SCENE.instantiate()
+		var w := WorkerScene.instantiate()
 		var angle := TAU * float(i) / 6.0
-		worker.position = Vector3(cos(angle), 0.0, sin(angle)) * 4.0 + Vector3(0.0, 0.0, 6.0)
-		worker.set_home_hq(player_hq)
-		worker.minerals_delivered.connect(_on_worker_minerals_delivered)
-		$World.add_child(worker)
+		w.position = Vector3(cos(angle) * 4.0, 0.0, sin(angle) * 4.0 + 6.0)
+		w.set_hq(_hq)
+		w.minerals_delivered.connect(_on_minerals)
+		$World.add_child(w)
 
-func _spawn_resources() -> void:
-	var node_positions := [
-		Vector3(-8.0, 0.0, -12.0),
-		Vector3(-5.0, 0.0, -15.0),
-		Vector3(-2.0, 0.0, -12.0),
-		Vector3(2.0, 0.0, -13.0),
-		Vector3(6.0, 0.0, -15.0),
-		Vector3(9.0, 0.0, -12.0)
+func _spawn_minerals() -> void:
+	var positions := [
+		Vector3(-8, 0, -12), Vector3(-5, 0, -15), Vector3(-2, 0, -12),
+		Vector3(2, 0, -13), Vector3(6, 0, -15), Vector3(9, 0, -12),
 	]
+	for pos in positions:
+		var r := ResourceScene.instantiate()
+		r.position = pos
+		$World.add_child(r)
 
-	for node_position in node_positions:
-		var resource_node := RESOURCE_SCENE.instantiate()
-		resource_node.position = node_position
-		$World.add_child(resource_node)
-
-func _handle_left_click(screen_position: Vector2) -> void:
-	var result := _raycast_from_screen(screen_position)
+func _on_left_click(screen_pos: Vector2) -> void:
 	_clear_selection()
-
-	if result.is_empty():
-		_update_ui()
+	var hit := _raycast(screen_pos)
+	if hit.is_empty():
+		_refresh_ui()
 		return
+	var unit := _find_selectable(hit.get("collider"))
+	if unit != null:
+		_selected.append(unit)
+		if unit.has_method("set_selected"):
+			unit.set_selected(true)
+	_refresh_ui()
 
-	var selectable := _find_selectable_from_collider(result.get("collider"))
-	if selectable != null and selectable.is_in_group("selectable"):
-		selected_units.append(selectable)
-		if selectable.has_method("set_selected"):
-			selectable.set_selected(true)
-
-	_update_ui()
-
-func _handle_right_click(screen_position: Vector2) -> void:
-	if selected_units.is_empty():
+func _on_right_click(screen_pos: Vector2) -> void:
+	if _selected.is_empty():
 		return
-
-	var result := _raycast_from_screen(screen_position)
-	if result.is_empty():
+	var hit := _raycast(screen_pos)
+	if hit.is_empty():
 		return
-
-	var resource_target := _find_resource_from_collider(result.get("collider"))
-	if resource_target != null:
-		for unit in selected_units:
-			if unit != null and unit.has_method("set_gather_target"):
-				unit.set_gather_target(resource_target, player_hq)
+	var resource := _find_resource(hit.get("collider"))
+	if resource != null:
+		for u in _selected:
+			if u != null and u.has_method("command_gather"):
+				u.command_gather(resource, _hq)
 		return
-
-	var target: Vector3 = result.position
-	for unit in selected_units:
-		if unit != null and unit.has_method("set_move_target"):
-			unit.set_move_target(target)
+	for u in _selected:
+		if u != null and u.has_method("command_move"):
+			u.command_move(hit.position)
 
 func _clear_selection() -> void:
-	for unit in selected_units:
-		if unit != null and unit.has_method("set_selected"):
-			unit.set_selected(false)
-	selected_units.clear()
+	for u in _selected:
+		if u != null and u.has_method("set_selected"):
+			u.set_selected(false)
+	_selected.clear()
 
-func _raycast_from_screen(screen_position: Vector2) -> Dictionary:
-	var from := camera.project_ray_origin(screen_position)
-	var to := from + camera.project_ray_normal(screen_position) * 500.0
-	var query := PhysicsRayQueryParameters3D.create(from, to)
+func _raycast(screen_pos: Vector2) -> Dictionary:
+	var origin := _camera.project_ray_origin(screen_pos)
+	var end := origin + _camera.project_ray_normal(screen_pos) * 500.0
+	var query := PhysicsRayQueryParameters3D.create(origin, end)
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
-func _find_selectable_from_collider(collider: Object) -> Node:
+func _find_selectable(collider: Object) -> Node:
 	if collider == null:
 		return null
 	if collider is Node and collider.is_in_group("selectable"):
@@ -115,7 +103,7 @@ func _find_selectable_from_collider(collider: Object) -> Node:
 		return collider.get_parent()
 	return null
 
-func _find_resource_from_collider(collider: Object) -> Node3D:
+func _find_resource(collider: Object) -> Node3D:
 	if collider == null:
 		return null
 	if collider is Node and collider.is_in_group("resource_nodes"):
@@ -124,11 +112,10 @@ func _find_resource_from_collider(collider: Object) -> Node3D:
 		return collider.get_parent()
 	return null
 
-func _on_worker_minerals_delivered(amount: int) -> void:
-	player_minerals += amount
-	_update_ui()
+func _on_minerals(amount: int) -> void:
+	_minerals += amount
+	_refresh_ui()
 
-func _update_ui() -> void:
-	var selection_text := "Selection: %d" % selected_units.size()
-	selection_label.text = "%s\nMinerals: %d  Gas: %d\nSupply: %d / %d" % [selection_text, player_minerals, player_gas, current_supply, max_supply]
-	help_label.text = "LMB: Select  RMB: Move/Gather\nWASD + Wheel: Camera  Esc: Menu"
+func _refresh_ui() -> void:
+	_sel_label.text = "Selection: %d\nMinerals: %d  Gas: %d\nSupply: %d / %d" % [_selected.size(), _minerals, _gas, _supply, _max_supply]
+	_help_label.text = "LMB: Select  RMB: Move/Gather\nWASD + Wheel: Camera  Esc: Menu"
