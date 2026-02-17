@@ -11,7 +11,7 @@ func harvest(requested_amount: int) -> int:
 	if minerals_remaining <= 0:
 		return 0
 
-	var mined: int = min(requested_amount, minerals_remaining)
+	var mined: int = mini(requested_amount, minerals_remaining)
 	minerals_remaining -= mined
 	_update_visual_state()
 	return mined
