@@ -253,13 +253,14 @@ func _fire_projectile() -> void:
 func _auto_acquire_target() -> void:
 	var closest_dist := attack_range * 1.5
 	var closest: Node3D = null
-	for enemy in get_tree().get_nodes_in_group("enemy_units"):
-		if not is_instance_valid(enemy):
-			continue
-		var dist := global_position.distance_to(enemy.global_position)
-		if dist < closest_dist:
-			closest_dist = dist
-			closest = enemy
+	for group_name in ["enemy_units", "enemy_buildings"]:
+		for enemy in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(enemy):
+				continue
+			var dist := global_position.distance_to(enemy.global_position)
+			if dist < closest_dist:
+				closest_dist = dist
+				closest = enemy
 	if closest != null:
 		_attack_target = closest
 		if _state == State.IDLE:
