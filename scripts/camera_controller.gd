@@ -1,9 +1,9 @@
 extends Camera3D
 
-@export var move_speed: float = 22.0
-@export var zoom_speed: float = 45.0
-@export var min_height: float = 12.0
-@export var max_height: float = 60.0
+@export var move_speed := 22.0
+@export var zoom_speed := 45.0
+@export var min_height := 12.0
+@export var max_height := 60.0
 
 var _zoom_direction := 0.0
 
@@ -20,9 +20,8 @@ func _process(delta: float) -> void:
 
 	if move_input.length() > 0.0:
 		move_input = move_input.normalized()
-		var planar_velocity := Vector3(move_input.x, 0.0, move_input.y) * move_speed * delta
-		global_position += planar_velocity
+		global_position += Vector3(move_input.x, 0.0, move_input.y) * move_speed * delta
 
 	if _zoom_direction != 0.0:
-		global_position.y = clamp(global_position.y + _zoom_direction * zoom_speed * delta, min_height, max_height)
+		global_position.y = clampf(global_position.y + _zoom_direction * zoom_speed * delta, min_height, max_height)
 		_zoom_direction = move_toward(_zoom_direction, 0.0, 4.0 * delta)
