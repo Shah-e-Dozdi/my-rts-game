@@ -274,9 +274,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey and event.pressed:
-		var key := event.keycode
+		var key: int = event.keycode
 		if key >= KEY_1 and key <= KEY_9:
-			var idx := key - KEY_1
+			var idx: int = key - KEY_1
 			if event.ctrl_pressed:
 				_control_groups[idx] = _selected.duplicate()
 				get_viewport().set_input_as_handled()
@@ -534,7 +534,7 @@ func _snap_to_grid(pos: Vector3) -> Vector3:
 func _try_train_worker() -> void:
 	if _hq == null or not is_instance_valid(_hq):
 		return
-	var cost := _hq.WORKER_COST
+	var cost: int = _hq.WORKER_COST
 	if _minerals < cost:
 		return
 	if _supply >= _max_supply:
@@ -723,12 +723,12 @@ func _update_command_panel() -> void:
 func _update_production_label() -> void:
 	var text := ""
 	if _hq != null and is_instance_valid(_hq) and _hq.get_queue_size() > 0:
-		var progress := _hq.get_build_progress()
+		var progress: float = _hq.get_build_progress()
 		text += "HQ: Training worker [%d%%] (queue: %d)\n" % [int(progress * 100), _hq.get_queue_size()]
 
 	for barracks in get_tree().get_nodes_in_group("barracks"):
 		if is_instance_valid(barracks) and barracks.get_queue_size() > 0:
-			var progress := barracks.get_build_progress()
+			var progress: float = barracks.get_build_progress()
 			text += "Barracks: Training soldier [%d%%] (queue: %d)\n" % [int(progress * 100), barracks.get_queue_size()]
 
 	_production_label.text = text
