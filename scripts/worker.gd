@@ -17,6 +17,7 @@ var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
 var _mat_selected: StandardMaterial3D
 var _mat_carrying: StandardMaterial3D
+var _nav_agent: NavigationAgent3D
 
 enum State { IDLE, MOVING, GATHERING, RETURNING, ATTACKING }
 
@@ -32,6 +33,13 @@ var _attack_timer := 0.0
 
 func _ready() -> void:
 	hp = max_hp
+
+	_nav_agent = NavigationAgent3D.new()
+	_nav_agent.path_desired_distance = 0.5
+	_nav_agent.target_desired_distance = 0.5
+	_nav_agent.avoidance_enabled = true
+	_nav_agent.radius = 0.5
+	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -89,6 +97,7 @@ func command_move(target: Vector3) -> void:
 	_resource_target = null
 	_attack_target = null
 	_move_target = target
+	_nav_agent.target_position = target
 	_state = State.MOVING
 
 func command_gather(resource: Node3D, hq: Node3D) -> void:
@@ -98,6 +107,7 @@ func command_gather(resource: Node3D, hq: Node3D) -> void:
 	if _resource_target == null or _hq == null:
 		return
 	_move_target = _resource_target.global_position
+	_nav_agent.target_position = _move_target
 	_state = State.MOVING
 
 func command_attack(target: Node3D) -> void:
@@ -127,10 +137,7 @@ func _update_appearance() -> void:
 		_mesh.material_override = _mat_default
 
 func _do_move() -> void:
-	var diff := _move_target - global_position
-	diff.y = 0.0
-	var arrive_dist := 1.5 if _resource_target != null else 0.6
-	if diff.length() < arrive_dist:
+	if _nav_agent.is_navigation_finished():
 		velocity = Vector3.ZERO
 		if _resource_target != null and _carried < carry_capacity:
 			_state = State.GATHERING
@@ -140,7 +147,26 @@ func _do_move() -> void:
 		else:
 			_state = State.IDLE
 		return
-	velocity = diff.normalized() * move_speed
+
+	var arrive_dist := 1.5 if _resource_target != null else 0.5
+	var to_target := _move_target - global_position
+	to_target.y = 0.0
+	if to_target.length() < arrive_dist:
+		velocity = Vector3.ZERO
+		if _resource_target != null and _carried < carry_capacity:
+			_state = State.GATHERING
+			_gather_timer = 0.0
+		elif _carried > 0 and _hq != null:
+			_state = State.RETURNING
+		else:
+			_state = State.IDLE
+		return
+
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
 
 func _do_gather(delta: float) -> void:
 	velocity = Vector3.ZERO
@@ -174,6 +200,7 @@ func _head_to_hq() -> void:
 		_state = State.IDLE
 		return
 	_move_target = _hq.global_position
+	_nav_agent.target_position = _move_target
 	_state = State.RETURNING
 
 func _do_return() -> void:
@@ -190,11 +217,17 @@ func _do_return() -> void:
 			_update_appearance()
 		if _resource_target != null:
 			_move_target = _resource_target.global_position
+			_nav_agent.target_position = _move_target
 			_state = State.MOVING
 		else:
 			_state = State.IDLE
 		return
-	velocity = diff.normalized() * move_speed
+
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
 
 func _do_attack() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
@@ -207,9 +240,13 @@ func _do_attack() -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		velocity = diff.normalized() * move_speed
-		if diff.length() > 0.01:
-			rotation.y = atan2(diff.x, diff.z)
+		_nav_agent.target_position = _attack_target.global_position
+		var next_pos := _nav_agent.get_next_path_position()
+		var dir := next_pos - global_position
+		dir.y = 0.0
+		if dir.length() > 0.01:
+			velocity = dir.normalized() * move_speed
+			rotation.y = atan2(dir.x, dir.z)
 	else:
 		velocity = Vector3.ZERO
 		if diff.length() > 0.01:
@@ -218,7 +255,6 @@ func _do_attack() -> void:
 			_attack_timer = attack_cooldown
 			if _attack_target.has_method("take_damage"):
 				_attack_target.take_damage(attack_damage, self)
-			# Lunge animation
 			var orig_pos := _mesh.position
 			var tween := get_tree().create_tween()
 			tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.2), 0.05)
