@@ -250,7 +250,7 @@ func _setup_enemy_ai() -> void:
 	_enemy_ai.setup(_world)
 
 	# Add health bar to the enemy HQ
-	var enemy_hq := _enemy_ai.get_enemy_hq()
+	var enemy_hq: Node3D = _enemy_ai.get_enemy_hq()
 	if enemy_hq != null:
 		_add_health_bar(enemy_hq, 4.5, 3.0)
 
@@ -366,7 +366,7 @@ func _check_game_over() -> void:
 	if _game_over:
 		return
 	# Victory: enemy HQ destroyed
-	var enemy_hq := _enemy_ai.get_enemy_hq()
+	var enemy_hq: Node3D = _enemy_ai.get_enemy_hq()
 	if enemy_hq == null or not is_instance_valid(enemy_hq):
 		_trigger_victory()
 		return
