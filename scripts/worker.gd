@@ -8,6 +8,9 @@ signal unit_died(unit: Node3D)
 @export var gather_per_tick := 5
 @export var carry_capacity := 10
 @export var max_hp := 40
+@export var attack_damage := 5
+@export var attack_range := 1.8
+@export var attack_cooldown := 1.0
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -15,7 +18,7 @@ var _mat_default: StandardMaterial3D
 var _mat_selected: StandardMaterial3D
 var _mat_carrying: StandardMaterial3D
 
-enum State { IDLE, MOVING, GATHERING, RETURNING }
+enum State { IDLE, MOVING, GATHERING, RETURNING, ATTACKING }
 
 var _state: State = State.IDLE
 var _move_target := Vector3.ZERO
@@ -24,6 +27,8 @@ var _carried := 0
 var _resource_target: Node3D = null
 var _hq: Node3D = null
 var _selected := false
+var _attack_target: Node3D = null
+var _attack_timer := 0.0
 
 func _ready() -> void:
 	hp = max_hp
@@ -60,6 +65,8 @@ func _ready() -> void:
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
+	_attack_timer -= delta
+
 	match _state:
 		State.MOVING:
 			_do_move()
@@ -68,6 +75,8 @@ func _physics_process(delta: float) -> void:
 			_mesh.position.y = sin(Time.get_ticks_msec() * 0.006) * 0.2
 		State.RETURNING:
 			_do_return()
+		State.ATTACKING:
+			_do_attack()
 		_:
 			velocity = Vector3.ZERO
 
@@ -78,16 +87,23 @@ func _physics_process(delta: float) -> void:
 
 func command_move(target: Vector3) -> void:
 	_resource_target = null
+	_attack_target = null
 	_move_target = target
 	_state = State.MOVING
 
 func command_gather(resource: Node3D, hq: Node3D) -> void:
+	_attack_target = null
 	_resource_target = resource
 	_hq = hq
 	if _resource_target == null or _hq == null:
 		return
 	_move_target = _resource_target.global_position
 	_state = State.MOVING
+
+func command_attack(target: Node3D) -> void:
+	_resource_target = null
+	_attack_target = target
+	_state = State.ATTACKING
 
 func set_hq(hq: Node3D) -> void:
 	_hq = hq
@@ -179,3 +195,31 @@ func _do_return() -> void:
 			_state = State.IDLE
 		return
 	velocity = diff.normalized() * move_speed
+
+func _do_attack() -> void:
+	if _attack_target == null or not is_instance_valid(_attack_target):
+		_attack_target = null
+		_state = State.IDLE
+		return
+
+	var diff := _attack_target.global_position - global_position
+	diff.y = 0.0
+	var dist := diff.length()
+
+	if dist > attack_range:
+		velocity = diff.normalized() * move_speed
+		if diff.length() > 0.01:
+			rotation.y = atan2(diff.x, diff.z)
+	else:
+		velocity = Vector3.ZERO
+		if diff.length() > 0.01:
+			rotation.y = atan2(diff.x, diff.z)
+		if _attack_timer <= 0.0:
+			_attack_timer = attack_cooldown
+			if _attack_target.has_method("take_damage"):
+				_attack_target.take_damage(attack_damage, self)
+			# Lunge animation
+			var orig_pos := _mesh.position
+			var tween := get_tree().create_tween()
+			tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.2), 0.05)
+			tween.tween_property(_mesh, "position", orig_pos, 0.1)
