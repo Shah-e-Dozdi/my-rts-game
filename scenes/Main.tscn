@@ -1,32 +1,32 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scripts/main.gd" id="script_main"]
-[ext_resource type="Script" path="res://scripts/camera_controller.gd" id="script_camera"]
+[ext_resource type="Script" path="res://scripts/main.gd" id="main_script"]
+[ext_resource type="Script" path="res://scripts/camera_controller.gd" id="cam_script"]
 
-[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+[sub_resource type="PlaneMesh" id="ground_mesh"]
 size = Vector2(200, 200)
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+[sub_resource type="BoxShape3D" id="ground_col"]
 size = Vector3(200, 0.1, 200)
 
 [node name="Main" type="Node3D"]
-script = ExtResource("script_main")
+script = ExtResource("main_script")
 
 [node name="World" type="Node3D" parent="."]
 
 [node name="Ground" type="StaticBody3D" parent="World"]
 
 [node name="GroundMesh" type="MeshInstance3D" parent="World/Ground"]
-mesh = SubResource("PlaneMesh_ground")
+mesh = SubResource("ground_mesh")
 
-[node name="GroundCollision" type="CollisionShape3D" parent="World/Ground"]
-shape = SubResource("BoxShape3D_ground")
+[node name="GroundCol" type="CollisionShape3D" parent="World/Ground"]
+shape = SubResource("ground_col")
 
 [node name="CameraRig" type="Node3D" parent="."]
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
 transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 30, 30)
-script = ExtResource("script_camera")
+script = ExtResource("cam_script")
 
 [node name="UI" type="CanvasLayer" parent="."]
 
@@ -36,5 +36,5 @@ script = ExtResource("script_camera")
 text = "Selection: 0"
 
 [node name="HelpLabel" type="Label" parent="UI/Panel"]
-position = Vector2(0, 24)
+offset_top = 24.0
 text = "LMB: Select  RMB: Move/Gather"
