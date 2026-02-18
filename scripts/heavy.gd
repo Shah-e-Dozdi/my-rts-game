@@ -248,7 +248,7 @@ func _do_melee_slam() -> void:
 			continue
 		if enemy == _attack_target:
 			continue
-		var splash_dist := enemy.global_position.distance_to(hit_pos)
+		var splash_dist: float = enemy.global_position.distance_to(hit_pos)
 		if splash_dist <= splash_radius:
 			if enemy.has_method("take_damage"):
 				var splash_dmg := int(attack_damage * 0.5)
