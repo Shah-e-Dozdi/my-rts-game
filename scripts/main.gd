@@ -69,7 +69,13 @@ var _cmd_panel_key := ""
 var _game_over := false
 var _game_over_panel: PanelContainer = null
 
+# Pause
+var _paused := false
+var _pause_overlay: ColorRect = null
+var _pause_panel: PanelContainer = null
+
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	for i in 10:
 		_control_groups.append([])
 
@@ -294,7 +300,7 @@ func _setup_ghost_materials() -> void:
 # ─── MAIN LOOP ───────────────────────────────────────────────
 
 func _process(delta: float) -> void:
-	if _game_over:
+	if _game_over or _paused:
 		return
 
 	if _dragging:
@@ -331,17 +337,24 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _game_over:
 		if event is InputEventKey and event.pressed:
+			get_tree().paused = false
 			get_tree().change_scene_to_file("res://scenes/Menu.tscn")
 		return
 
 	if event.is_action_pressed("ui_cancel"):
+		if _paused:
+			_set_paused(false)
+			return
 		if _attack_cursor:
 			_attack_cursor = false
 			return
 		if _place_mode != PlaceMode.NONE:
 			_cancel_placement()
 			return
-		get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+		_set_paused(true)
+		return
+
+	if _paused:
 		return
 
 	if event is InputEventKey and event.pressed:
@@ -410,6 +423,76 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cancel_placement()
 				return
 			_on_right_click(event.position)
+
+
+# ─── PAUSE ───────────────────────────────────────────────────
+
+func _set_paused(value: bool) -> void:
+	_paused = value
+	get_tree().paused = value
+	if value:
+		_show_pause_menu()
+	else:
+		_hide_pause_menu()
+
+func _show_pause_menu() -> void:
+	if _pause_overlay == null:
+		_pause_overlay = ColorRect.new()
+		_pause_overlay.color = Color(0, 0, 0, 0.55)
+		_pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_pause_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+		_pause_overlay.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+		_canvas.add_child(_pause_overlay)
+	if _pause_panel == null:
+		_pause_panel = PanelContainer.new()
+		_pause_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		_pause_panel.custom_minimum_size = Vector2(320, 220)
+		_pause_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+		_canvas.add_child(_pause_panel)
+
+		var vb := VBoxContainer.new()
+		vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		vb.add_theme_constant_override("separation", 12)
+		_pause_panel.add_child(vb)
+
+		var title := Label.new()
+		title.text = "Paused"
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title.add_theme_font_size_override("font_size", 28)
+		vb.add_child(title)
+
+		var resume_btn := Button.new()
+		resume_btn.text = "Return"
+		resume_btn.custom_minimum_size = Vector2(220, 44)
+		resume_btn.pressed.connect(func(): _set_paused(false))
+		vb.add_child(resume_btn)
+
+		var restart_btn := Button.new()
+		restart_btn.text = "Restart"
+		restart_btn.custom_minimum_size = Vector2(220, 44)
+		restart_btn.pressed.connect(func():
+			get_tree().paused = false
+			get_tree().change_scene_to_file("res://scenes/Main.tscn")
+		)
+		vb.add_child(restart_btn)
+
+		var menu_btn := Button.new()
+		menu_btn.text = "Quit to Menu"
+		menu_btn.custom_minimum_size = Vector2(220, 44)
+		menu_btn.pressed.connect(func():
+			get_tree().paused = false
+			get_tree().change_scene_to_file("res://scenes/Menu.tscn")
+		)
+		vb.add_child(menu_btn)
+
+	_pause_overlay.visible = true
+	_pause_panel.visible = true
+
+func _hide_pause_menu() -> void:
+	if _pause_overlay != null:
+		_pause_overlay.visible = false
+	if _pause_panel != null:
+		_pause_panel.visible = false
 
 # ─── GAME OVER ───────────────────────────────────────────────
 
@@ -1066,14 +1149,20 @@ func _refresh_ui() -> void:
 func _update_command_panel() -> void:
 	# Build a cache key so we only rebuild when state actually changes
 	var key := "default"
-	if _selected.size() == 1 and is_instance_valid(_selected[0]):
-		var sel := _selected[0]
-		var is_hq := (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker"))
-		var is_barracks := sel.is_in_group("barracks") or sel.has_method("queue_wolf")
-		if is_hq:
-			key = "hq_%d_%d_%d" % [_wood, _supply, _max_supply]
-		elif is_barracks:
-			key = "barracks_%d_%d_%d_%d" % [_wood, _resin, _supply, _max_supply]
+	var selected_hq: Node3D = null
+	var selected_barracks: Node3D = null
+	for s in _selected:
+		if s == null or not is_instance_valid(s):
+			continue
+		if selected_hq == null and (s == _hq or s.is_in_group("hq") or (s.is_in_group("human_buildings") and s.has_method("queue_worker"))):
+			selected_hq = s
+		if selected_barracks == null and (s.is_in_group("barracks") or s.has_method("queue_wolf")):
+			selected_barracks = s
+
+	if selected_hq != null:
+		key = "hq_%d_%d_%d" % [_wood, _supply, _max_supply]
+	elif selected_barracks != null:
+		key = "barracks_%d_%d_%d_%d" % [_wood, _resin, _supply, _max_supply]
 	if _attack_cursor:
 		key = "attack"
 	elif _place_mode != PlaceMode.NONE:
@@ -1086,18 +1175,16 @@ func _update_command_panel() -> void:
 	for child in _command_panel.get_children():
 		child.queue_free()
 
-	# Check if a single building is selected to show command cards
-	if _selected.size() == 1 and is_instance_valid(_selected[0]):
-		var sel := _selected[0]
-		if (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker")):
-			_build_hq_command_cards(sel)
-			return
-		if sel.is_in_group("barracks") or sel.has_method("queue_wolf"):
-			_build_barracks_command_cards(sel)
-			return
+	# Show building command cards when at least one matching building is selected
+	if selected_hq != null:
+		_build_hq_command_cards(selected_hq)
+		return
+	if selected_barracks != null:
+		_build_barracks_command_cards(selected_barracks)
+		return
 
 	# Default help text
-	var help_text := "Mouse Edge: Camera  Scroll: Zoom  Esc: Menu\n"
+	var help_text := "Mouse Edge: Camera  Scroll: Zoom  Esc: Pause/Return\n"
 	help_text += "LMB: Select  RMB: Move/Gather/Attack\n"
 	help_text += "[A]+LMB: Attack-Move  [S]: Stop\n"
 	help_text += "Shift+Click: Add/Remove  DblClick: Select all of type\n"
