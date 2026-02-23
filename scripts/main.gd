@@ -62,6 +62,9 @@ var _floating_texts: Array[Dictionary] = []
 # Attack-move cursor
 var _attack_cursor := false
 
+# Command panel cache (avoid rebuilding every frame so buttons stay clickable)
+var _cmd_panel_key := ""
+
 # Game over
 var _game_over := false
 var _game_over_panel: PanelContainer = null
@@ -666,6 +669,7 @@ func _clear_selection() -> void:
 		if u != null and is_instance_valid(u) and u.has_method("set_selected"):
 			u.set_selected(false)
 	_selected.clear()
+	_cmd_panel_key = ""
 
 func _clean_dead_refs() -> void:
 	var i := _selected.size() - 1
@@ -1042,6 +1046,23 @@ func _refresh_ui() -> void:
 	_update_command_panel()
 
 func _update_command_panel() -> void:
+	# Build a cache key so we only rebuild when state actually changes
+	var key := "default"
+	if _selected.size() == 1 and is_instance_valid(_selected[0]):
+		var sel := _selected[0]
+		if sel == _hq and is_instance_valid(_hq):
+			key = "hq_%d_%d_%d" % [_wood, _supply, _max_supply]
+		elif sel.is_in_group("barracks"):
+			key = "barracks_%d_%d_%d_%d" % [_wood, _resin, _supply, _max_supply]
+	if _attack_cursor:
+		key = "attack"
+	elif _place_mode != PlaceMode.NONE:
+		key = "placing"
+
+	if key == _cmd_panel_key:
+		return
+	_cmd_panel_key = key
+
 	for child in _command_panel.get_children():
 		child.queue_free()
 
