@@ -980,12 +980,14 @@ func _raycast(screen_pos: Vector2) -> Dictionary:
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _find_selectable(collider: Object) -> Node:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	if collider is Node and collider.is_in_group("selectable"):
-		return collider
-	if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group("selectable"):
-		return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("selectable"):
+			return current
+		current = current.get_parent()
 	return null
 
 func _find_resource(collider: Object) -> Node3D:
