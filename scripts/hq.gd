@@ -9,9 +9,9 @@ var _mesh: MeshInstance3D
 var _queue: Array[Dictionary] = []
 var _build_timer := 0.0
 
-const WORKER_COST := 50
-const WORKER_SUPPLY := 1
-const WORKER_BUILD_TIME := 12.0
+@export var worker_cost := 50
+@export var worker_supply := 1
+@export var worker_build_time := 12.0
 
 func _ready() -> void:
 	hp = max_hp
@@ -64,6 +64,7 @@ func _ready() -> void:
 
 	add_to_group("human_buildings")
 	add_to_group("selectable")
+	add_to_group("hq")
 
 func _process(delta: float) -> void:
 	if _queue.is_empty():
@@ -78,7 +79,7 @@ func _process(delta: float) -> void:
 		_queue.pop_front()
 
 func queue_worker(scene: PackedScene) -> void:
-	_queue.append({"scene": scene, "build_time": WORKER_BUILD_TIME})
+	_queue.append({"scene": scene, "build_time": worker_build_time})
 	if _queue.size() == 1:
 		_build_timer = 0.0
 
