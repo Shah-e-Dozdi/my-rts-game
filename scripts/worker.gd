@@ -1,13 +1,14 @@
 extends CharacterBody3D
 
-signal minerals_delivered(amount: int)
+signal wood_delivered(amount: int)
+signal resin_delivered(amount: int)
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 6.0
+@export var move_speed := 5.5
 @export var gather_interval := 1.0
 @export var gather_per_tick := 5
 @export var carry_capacity := 10
-@export var max_hp := 40
+@export var max_hp := 45
 @export var attack_damage := 5
 @export var attack_range := 1.8
 @export var attack_cooldown := 1.0
@@ -17,7 +18,8 @@ var hp: int
 var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
 var _mat_selected: StandardMaterial3D
-var _mat_carrying: StandardMaterial3D
+var _mat_carrying_wood: StandardMaterial3D
+var _mat_carrying_resin: StandardMaterial3D
 var _nav_agent: NavigationAgent3D
 
 enum State { IDLE, MOVING, GATHERING, RETURNING, ATTACKING }
@@ -26,6 +28,7 @@ var _state: State = State.IDLE
 var _move_target := Vector3.ZERO
 var _gather_timer := 0.0
 var _carried := 0
+var _carried_type: String = "wood"
 var _resource_target: Node3D = null
 var _hq: Node3D = null
 var _selected := false
@@ -49,21 +52,36 @@ func _ready() -> void:
 	col.shape = capsule
 	add_child(col)
 
+	# Beaver body - round brown shape
 	_mesh = MeshInstance3D.new()
 	var cap_mesh := CapsuleMesh.new()
-	cap_mesh.radius = 0.5
-	cap_mesh.height = 1.0
+	cap_mesh.radius = 0.45
+	cap_mesh.height = 0.9
 	_mesh.mesh = cap_mesh
 	add_child(_mesh)
 
+	# Flat beaver tail
+	var tail := MeshInstance3D.new()
+	var tail_mesh := BoxMesh.new()
+	tail_mesh.size = Vector3(0.35, 0.08, 0.5)
+	tail.mesh = tail_mesh
+	tail.position = Vector3(0, -0.15, 0.45)
+	var tail_mat := StandardMaterial3D.new()
+	tail_mat.albedo_color = Color(0.3, 0.2, 0.1)
+	tail.material_override = tail_mat
+	_mesh.add_child(tail)
+
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(1.0, 1.0, 1.0)
+	_mat_default.albedo_color = Color(0.5, 0.35, 0.18)
 
 	_mat_selected = StandardMaterial3D.new()
 	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
 
-	_mat_carrying = StandardMaterial3D.new()
-	_mat_carrying.albedo_color = Color(1.0, 0.85, 0.2)
+	_mat_carrying_wood = StandardMaterial3D.new()
+	_mat_carrying_wood.albedo_color = Color(0.6, 0.45, 0.2)
+
+	_mat_carrying_resin = StandardMaterial3D.new()
+	_mat_carrying_resin.albedo_color = Color(0.85, 0.6, 0.15)
 
 	_mesh.material_override = _mat_default
 
@@ -133,7 +151,10 @@ func _update_appearance() -> void:
 	if _selected:
 		_mesh.material_override = _mat_selected
 	elif _carried > 0:
-		_mesh.material_override = _mat_carrying
+		if _carried_type == "resin":
+			_mesh.material_override = _mat_carrying_resin
+		else:
+			_mesh.material_override = _mat_carrying_wood
 	else:
 		_mesh.material_override = _mat_default
 
@@ -146,6 +167,10 @@ func _do_move() -> void:
 	if target_dist < arrive_dist:
 		velocity = Vector3.ZERO
 		if _resource_target != null and _carried < carry_capacity:
+			if _resource_target.has_method("get_resource_type"):
+				_carried_type = _resource_target.get_resource_type()
+			else:
+				_carried_type = "wood"
 			_state = State.GATHERING
 			_gather_timer = 0.0
 		elif _carried > 0 and _hq != null:
@@ -154,12 +179,10 @@ func _do_move() -> void:
 			_state = State.IDLE
 		return
 
-	# Close to target: move directly (nav mesh may carve out the target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		return
 
-	# Far away: use navigation agent for pathfinding around obstacles
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		return
@@ -215,7 +238,10 @@ func _do_return() -> void:
 	if dist < 3.0:
 		velocity = Vector3.ZERO
 		if _carried > 0:
-			minerals_delivered.emit(_carried)
+			if _carried_type == "resin":
+				resin_delivered.emit(_carried)
+			else:
+				wood_delivered.emit(_carried)
 			_carried = 0
 			_update_appearance()
 		if _resource_target != null:
@@ -226,12 +252,10 @@ func _do_return() -> void:
 			_state = State.IDLE
 		return
 
-	# Close to HQ: move directly (nav mesh carves out HQ area)
 	if dist < 5.0:
 		velocity = diff.normalized() * move_speed
 		return
 
-	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = diff.normalized() * move_speed
 		return
@@ -252,7 +276,6 @@ func _do_attack() -> void:
 	var dist := diff.length()
 
 	if dist > attack_range:
-		# Close enough to go direct (nav mesh may carve out building area)
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			rotation.y = atan2(diff.x, diff.z)

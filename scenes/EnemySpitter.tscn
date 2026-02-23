@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_spitter.gd" id="1"]
+
+[node name="EnemySpitter" type="CharacterBody3D"]
+script = ExtResource("1")

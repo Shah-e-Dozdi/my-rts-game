@@ -2,11 +2,12 @@ extends CharacterBody3D
 
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 6.0
-@export var attack_range := 1.0
-@export var attack_damage := 5
-@export var attack_cooldown := 0.5
+@export var move_speed := 5.0
+@export var attack_range := 11.0
+@export var attack_damage := 7
+@export var attack_cooldown := 1.0
 @export var max_hp := 35
+@export var projectile_speed := 15.0
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -20,62 +21,51 @@ var _move_target := Vector3.ZERO
 var _attack_target: Node3D = null
 var _attack_timer := 0.0
 var _scan_timer := 0.0
+# Offset angle for spreading around buildings
 var _building_angle_offset := 0.0
 
 func _ready() -> void:
 	hp = max_hp
+	# Each unit gets a random angle offset so they spread around buildings
 	_building_angle_offset = randf_range(-PI, PI)
 
 	_nav_agent = NavigationAgent3D.new()
 	_nav_agent.path_desired_distance = 0.5
 	_nav_agent.target_desired_distance = 0.5
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.35
+	_nav_agent.radius = 0.4
 	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.35
-	capsule.height = 0.8
+	capsule.radius = 0.4
+	capsule.height = 1.0
 	col.shape = capsule
 	add_child(col)
 
-	# Ant body - small, dark, segmented
+	# Elongated body
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.5, 0.6, 0.7)
+	box_mesh.size = Vector3(0.5, 0.7, 0.8)
 	_mesh.mesh = box_mesh
 	add_child(_mesh)
 
-	# Ant head
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.2
-	head_mesh.height = 0.35
-	head.mesh = head_mesh
-	head.position = Vector3(0, 0.1, -0.45)
-	var head_mat := StandardMaterial3D.new()
-	head_mat.albedo_color = Color(0.25, 0.08, 0.05)
-	head.material_override = head_mat
-	_mesh.add_child(head)
-
-	# Mandibles
-	for side in [-1.0, 1.0]:
-		var mandible := MeshInstance3D.new()
-		var mand_mesh := CylinderMesh.new()
-		mand_mesh.top_radius = 0.0
-		mand_mesh.bottom_radius = 0.04
-		mand_mesh.height = 0.2
-		mandible.mesh = mand_mesh
-		mandible.rotation_degrees.x = 90
-		mandible.position = Vector3(side * 0.1, 0.0, -0.55)
-		var mand_mat := StandardMaterial3D.new()
-		mand_mat.albedo_color = Color(0.4, 0.3, 0.2)
-		mandible.material_override = mand_mat
-		_mesh.add_child(mandible)
+	# Mandible detail at front (cone shape using CylinderMesh with top_radius=0)
+	var mandible := MeshInstance3D.new()
+	var mandible_mesh := CylinderMesh.new()
+	mandible_mesh.top_radius = 0.0
+	mandible_mesh.bottom_radius = 0.1
+	mandible_mesh.height = 0.35
+	mandible.mesh = mandible_mesh
+	mandible.rotation_degrees.x = 90
+	mandible.position = Vector3(0, 0.0, -0.55)
+	var mandible_mat := StandardMaterial3D.new()
+	mandible_mat.albedo_color = Color(0.6, 0.65, 0.2)
+	mandible.material_override = mandible_mat
+	_mesh.add_child(mandible)
 
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.35, 0.12, 0.08)
+	_mat_default.albedo_color = Color(0.5, 0.55, 0.15)
 	_mesh.material_override = _mat_default
 
 	add_to_group("enemy_units")
@@ -130,6 +120,7 @@ func _is_building(node: Node3D) -> bool:
 	return node.is_in_group("human_buildings") or node.is_in_group("enemy_buildings")
 
 func _get_effective_range(target: Node3D) -> float:
+	# Buildings are large - measure from edge not center
 	if _is_building(target):
 		return attack_range + 3.0
 	return attack_range
@@ -144,11 +135,13 @@ func _do_move() -> void:
 		_state = State.IDLE
 		return
 
+	# Close to target: move directly (nav mesh may carve out target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
 		return
 
+	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -172,6 +165,7 @@ func _do_attack(_delta: float) -> void:
 	var eff_range := _get_effective_range(_attack_target)
 
 	if dist > eff_range:
+		# For buildings, path to a spread-out perimeter point
 		var target_pos := _attack_target.global_position
 		if _is_building(_attack_target):
 			var approach_dir := Vector3(cos(_building_angle_offset), 0, sin(_building_angle_offset))
@@ -193,18 +187,44 @@ func _do_attack(_delta: float) -> void:
 		_face_direction(diff)
 		if _attack_timer <= 0.0:
 			_attack_timer = attack_cooldown
-			_do_melee_hit()
+			_fire_projectile()
 
-func _do_melee_hit() -> void:
+func _fire_projectile() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
-	var orig_pos := _mesh.position
-	var tween := get_tree().create_tween()
-	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.2), 0.04)
-	tween.tween_property(_mesh, "position", orig_pos, 0.08)
+	# Acid spit projectile
+	var proj := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.08
+	sphere.height = 0.16
+	proj.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.3, 0.7, 0.1)
+	mat.emission_enabled = true
+	mat.emission = Color(0.2, 0.6, 0.05)
+	mat.emission_energy_multiplier = 3.0
+	proj.material_override = mat
+	proj.global_position = global_position + Vector3(0, 0.5, 0)
 
-	if _attack_target.has_method("take_damage"):
-		_attack_target.take_damage(attack_damage, self)
+	var target_ref := _attack_target
+	var damage := attack_damage
+	var speed := projectile_speed
+
+	get_tree().current_scene.add_child(proj)
+
+	if target_ref != null and is_instance_valid(target_ref):
+		var target_pos: Vector3 = target_ref.global_position + Vector3(0, 0.5, 0)
+		var proj_dist: float = proj.global_position.distance_to(target_pos)
+		var duration: float = proj_dist / speed
+
+		var tween := get_tree().create_tween()
+		tween.tween_property(proj, "global_position", target_pos, duration)
+		tween.tween_callback(func() -> void:
+			if is_instance_valid(proj):
+				proj.queue_free()
+			if is_instance_valid(target_ref) and target_ref.has_method("take_damage"):
+				target_ref.take_damage(damage, self)
+		)
 
 func _auto_acquire_target() -> void:
 	var scan_range := 15.0
