@@ -1045,6 +1045,17 @@ func _update_command_panel() -> void:
 	for child in _command_panel.get_children():
 		child.queue_free()
 
+	# Check if a single building is selected to show command cards
+	if _selected.size() == 1 and is_instance_valid(_selected[0]):
+		var sel := _selected[0]
+		if sel == _hq and is_instance_valid(_hq):
+			_build_hq_command_cards()
+			return
+		if sel.is_in_group("barracks"):
+			_build_barracks_command_cards(sel)
+			return
+
+	# Default help text
 	var help_text := "Mouse Edge: Camera  Scroll: Zoom  Esc: Menu\n"
 	help_text += "LMB: Select  RMB: Move/Gather/Attack\n"
 	help_text += "[A]+LMB: Attack-Move  [S]: Stop\n"
@@ -1065,6 +1076,89 @@ func _update_command_panel() -> void:
 	lbl.text = help_text
 	lbl.add_theme_font_size_override("font_size", 13)
 	_command_panel.add_child(lbl)
+
+func _build_hq_command_cards() -> void:
+	var title := Label.new()
+	title.text = "HQ - Production"
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
+	_command_panel.add_child(title)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_command_panel.add_child(row)
+
+	var can_afford := _wood >= _hq.WORKER_COST
+	var can_supply := _supply < _max_supply
+	_add_command_card(row, "[Q] Worker", {
+		"HP": "45", "ATK": "5", "SPD": "5.5", "Range": "Melee",
+		"Cost": "%d wood" % _hq.WORKER_COST, "Supply": "1",
+		"Role": "Gathers wood & resin"
+	}, can_afford and can_supply, _try_train_worker)
+
+func _build_barracks_command_cards(barracks: Node3D) -> void:
+	var title := Label.new()
+	title.text = "Barracks - Production"
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.6))
+	_command_panel.add_child(title)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_command_panel.add_child(row)
+
+	# Wolf card
+	var wolf_afford := _wood >= barracks.WOLF_COST_WOOD and _resin >= barracks.WOLF_COST_RESIN
+	var wolf_supply := _supply + barracks.WOLF_SUPPLY <= _max_supply
+	var wolf_cost := "%dw" % barracks.WOLF_COST_WOOD
+	if barracks.WOLF_COST_RESIN > 0:
+		wolf_cost += "/%dr" % barracks.WOLF_COST_RESIN
+	_add_command_card(row, "[R] Wolf", {
+		"HP": "55", "ATK": "7", "SPD": "7.0", "Range": "Melee",
+		"Cost": wolf_cost, "Supply": str(barracks.WOLF_SUPPLY),
+		"Role": "Fast melee fighter"
+	}, wolf_afford and wolf_supply, _try_train_wolf)
+
+	# Primate card
+	var primate_afford := _wood >= barracks.PRIMATE_COST_WOOD and _resin >= barracks.PRIMATE_COST_RESIN
+	var primate_supply := _supply + barracks.PRIMATE_SUPPLY <= _max_supply
+	var primate_cost := "%dw/%dr" % [barracks.PRIMATE_COST_WOOD, barracks.PRIMATE_COST_RESIN]
+	_add_command_card(row, "[E] Primate", {
+		"HP": "50", "ATK": "9", "SPD": "5.0", "Range": "14",
+		"Cost": primate_cost, "Supply": str(barracks.PRIMATE_SUPPLY),
+		"Role": "Ranged thrower"
+	}, primate_afford and primate_supply, _try_train_primate)
+
+	# Bear card
+	var bear_afford := _wood >= barracks.BEAR_COST_WOOD and _resin >= barracks.BEAR_COST_RESIN
+	var bear_supply := _supply + barracks.BEAR_SUPPLY <= _max_supply
+	var bear_cost := "%dw/%dr" % [barracks.BEAR_COST_WOOD, barracks.BEAR_COST_RESIN]
+	_add_command_card(row, "[F] Bear", {
+		"HP": "150", "ATK": "12", "SPD": "4.0", "Range": "Melee",
+		"Cost": bear_cost, "Supply": str(barracks.BEAR_SUPPLY),
+		"Role": "Heavy tank"
+	}, bear_afford and bear_supply, _try_train_bear)
+
+func _add_command_card(parent: Control, title: String, stats: Dictionary, affordable: bool, callback: Callable) -> void:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(170, 80)
+
+	var card_text := title + "\n"
+	card_text += "HP:%s  ATK:%s\n" % [stats["HP"], stats["ATK"]]
+	card_text += "SPD:%s  Rng:%s\n" % [stats["SPD"], stats["Range"]]
+	card_text += "%s  Sup:%s\n" % [stats["Cost"], stats["Supply"]]
+	card_text += stats["Role"]
+
+	btn.text = card_text
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.add_theme_font_size_override("font_size", 11)
+
+	if not affordable:
+		btn.modulate = Color(0.5, 0.5, 0.5)
+		btn.disabled = true
+
+	btn.pressed.connect(callback)
+	parent.add_child(btn)
 
 func _update_production_label() -> void:
 	var text := ""
