@@ -10,6 +10,7 @@ var _mesh: MeshInstance3D
 func _ready() -> void:
 	hp = max_hp
 
+	# Insect Hive - organic mound structure
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = Vector3(5, 3, 5)
@@ -18,22 +19,35 @@ func _ready() -> void:
 	add_child(_mesh)
 
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.6, 0.1, 0.1)
+	mat.albedo_color = Color(0.35, 0.2, 0.1)
 	_mesh.material_override = mat
 
-	# Spiky towers on corners
-	for offset in [Vector3(-1.8, 3.0, -1.8), Vector3(1.8, 3.0, -1.8), Vector3(-1.8, 3.0, 1.8), Vector3(1.8, 3.0, 1.8)]:
-		var tower := MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.0
-		cyl.bottom_radius = 0.3
-		cyl.height = 1.2
-		tower.mesh = cyl
-		tower.position = offset
-		var tower_mat := StandardMaterial3D.new()
-		tower_mat.albedo_color = Color(0.4, 0.05, 0.05)
-		tower.material_override = tower_mat
-		add_child(tower)
+	# Organic mound top
+	var mound := MeshInstance3D.new()
+	var mound_mesh := SphereMesh.new()
+	mound_mesh.radius = 2.5
+	mound_mesh.height = 2.0
+	mound.mesh = mound_mesh
+	mound.position = Vector3(0, 3.0, 0)
+	var mound_mat := StandardMaterial3D.new()
+	mound_mat.albedo_color = Color(0.3, 0.15, 0.05)
+	mound.material_override = mound_mat
+	add_child(mound)
+
+	# Tunnel entrances
+	for offset in [Vector3(-1.5, 0.8, -2.6), Vector3(1.5, 0.8, -2.6), Vector3(0, 0.8, 2.6)]:
+		var tunnel := MeshInstance3D.new()
+		var tun_mesh := CylinderMesh.new()
+		tun_mesh.top_radius = 0.5
+		tun_mesh.bottom_radius = 0.5
+		tun_mesh.height = 0.2
+		tunnel.mesh = tun_mesh
+		tunnel.rotation_degrees.x = 90
+		tunnel.position = offset
+		var tun_mat := StandardMaterial3D.new()
+		tun_mat.albedo_color = Color(0.15, 0.08, 0.02)
+		tunnel.material_override = tun_mat
+		add_child(tunnel)
 
 	var body := StaticBody3D.new()
 	add_child(body)
@@ -49,15 +63,14 @@ func _ready() -> void:
 
 func take_damage(amount: int, _attacker: Node3D = null) -> void:
 	hp -= amount
-	# Flash on hit
 	if is_instance_valid(_mesh):
 		var flash_mat := StandardMaterial3D.new()
-		flash_mat.albedo_color = Color(1.0, 0.4, 0.4)
+		flash_mat.albedo_color = Color(0.6, 0.35, 0.2)
 		_mesh.material_override = flash_mat
 		get_tree().create_timer(0.1).timeout.connect(func() -> void:
 			if is_instance_valid(_mesh):
 				var mat := StandardMaterial3D.new()
-				mat.albedo_color = Color(0.6, 0.1, 0.1)
+				mat.albedo_color = Color(0.35, 0.2, 0.1)
 				_mesh.material_override = mat
 		)
 	if hp <= 0:

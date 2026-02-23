@@ -2,84 +2,78 @@ extends CharacterBody3D
 
 signal unit_died(unit: Node3D)
 
-@export var move_speed := 6.0
-@export var attack_range := 1.0
-@export var attack_damage := 5
-@export var attack_cooldown := 0.5
-@export var max_hp := 35
+@export var move_speed := 4.0
+@export var attack_range := 2.0
+@export var attack_damage := 12
+@export var attack_cooldown := 1.5
+@export var max_hp := 150
+@export var vision_range := 10.0
 
 var hp: int
 var _mesh: MeshInstance3D
 var _mat_default: StandardMaterial3D
+var _mat_selected: StandardMaterial3D
 var _nav_agent: NavigationAgent3D
 
-enum State { IDLE, MOVING, ATTACKING }
+enum State { IDLE, MOVING, ATTACKING, ATTACK_MOVE }
 
 var _state: State = State.IDLE
 var _move_target := Vector3.ZERO
 var _attack_target: Node3D = null
 var _attack_timer := 0.0
+var _selected := false
 var _scan_timer := 0.0
-var _building_angle_offset := 0.0
+var _attack_move_dest := Vector3.ZERO
 
 func _ready() -> void:
 	hp = max_hp
-	_building_angle_offset = randf_range(-PI, PI)
 
 	_nav_agent = NavigationAgent3D.new()
 	_nav_agent.path_desired_distance = 0.5
 	_nav_agent.target_desired_distance = 0.5
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.35
+	_nav_agent.radius = 0.55
 	add_child(_nav_agent)
 
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.35
-	capsule.height = 0.8
+	capsule.radius = 0.55
+	capsule.height = 1.3
 	col.shape = capsule
 	add_child(col)
 
-	# Ant body - small, dark, segmented
+	# Bear body - large brown box
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.5, 0.6, 0.7)
+	box_mesh.size = Vector3(1.0, 1.3, 0.9)
 	_mesh.mesh = box_mesh
+	_mesh.position.y = 0.0
 	add_child(_mesh)
 
-	# Ant head
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.2
-	head_mesh.height = 0.35
-	head.mesh = head_mesh
-	head.position = Vector3(0, 0.1, -0.45)
-	var head_mat := StandardMaterial3D.new()
-	head_mat.albedo_color = Color(0.25, 0.08, 0.05)
-	head.material_override = head_mat
-	_mesh.add_child(head)
-
-	# Mandibles
-	for side in [-1.0, 1.0]:
-		var mandible := MeshInstance3D.new()
-		var mand_mesh := CylinderMesh.new()
-		mand_mesh.top_radius = 0.0
-		mand_mesh.bottom_radius = 0.04
-		mand_mesh.height = 0.2
-		mandible.mesh = mand_mesh
-		mandible.rotation_degrees.x = 90
-		mandible.position = Vector3(side * 0.1, 0.0, -0.55)
-		var mand_mat := StandardMaterial3D.new()
-		mand_mat.albedo_color = Color(0.4, 0.3, 0.2)
-		mandible.material_override = mand_mat
-		_mesh.add_child(mandible)
+	# Shoulder hump detail - smaller box on top-back
+	var hump := MeshInstance3D.new()
+	var hump_mesh := BoxMesh.new()
+	hump_mesh.size = Vector3(0.6, 0.3, 0.5)
+	hump.mesh = hump_mesh
+	hump.position = Vector3(0.0, 0.7, 0.15)
+	var hump_mat := StandardMaterial3D.new()
+	hump_mat.albedo_color = Color(0.5, 0.35, 0.18)
+	hump.material_override = hump_mat
+	_mesh.add_child(hump)
 
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.35, 0.12, 0.08)
+	_mat_default.albedo_color = Color(0.45, 0.3, 0.15)
+
+	_mat_selected = StandardMaterial3D.new()
+	_mat_selected.albedo_color = Color(0.4, 0.9, 1.0)
+
 	_mesh.material_override = _mat_default
 
-	add_to_group("enemy_units")
-	add_to_group("enemies")
+	add_to_group("units")
+	add_to_group("selectable")
+	add_to_group("player_units")
+	add_to_group("combat_units")
+	add_to_group("bears")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -94,9 +88,14 @@ func _physics_process(delta: float) -> void:
 				_auto_acquire_target()
 		State.MOVING:
 			_do_move()
+		State.ATTACK_MOVE:
 			if _scan_timer <= 0.0:
-				_scan_timer = 0.5
+				_scan_timer = 0.3
 				_auto_acquire_target()
+			if _attack_target != null and is_instance_valid(_attack_target):
+				_do_attack(delta)
+			else:
+				_do_move_to(_attack_move_dest)
 		State.ATTACKING:
 			_do_attack(delta)
 
@@ -108,34 +107,56 @@ func command_move(target: Vector3) -> void:
 	_nav_agent.target_position = target
 	_state = State.MOVING
 
+func command_attack_move(target: Vector3) -> void:
+	_attack_move_dest = target
+	_move_target = target
+	_nav_agent.target_position = target
+	_attack_target = null
+	_state = State.ATTACK_MOVE
+
 func command_attack(target: Node3D) -> void:
 	_attack_target = target
 	_state = State.ATTACKING
 
+func set_selected(value: bool) -> void:
+	_selected = value
+	_mesh.material_override = _mat_selected if _selected else _mat_default
+
 func take_damage(amount: int, _attacker: Node3D = null) -> void:
 	hp -= amount
-	if is_instance_valid(_mesh):
-		var flash_mat := StandardMaterial3D.new()
-		flash_mat.albedo_color = Color(1.0, 1.0, 1.0)
-		_mesh.material_override = flash_mat
-		get_tree().create_timer(0.1).timeout.connect(func() -> void:
-			if is_instance_valid(_mesh):
-				_mesh.material_override = _mat_default
-		)
 	if hp <= 0:
 		unit_died.emit(self)
 		queue_free()
 
-func _is_building(node: Node3D) -> bool:
-	return node.is_in_group("human_buildings") or node.is_in_group("enemy_buildings")
-
-func _get_effective_range(target: Node3D) -> float:
-	if _is_building(target):
-		return attack_range + 3.0
-	return attack_range
-
 func _do_move() -> void:
 	var to_target := _move_target - global_position
+	to_target.y = 0.0
+	var target_dist := to_target.length()
+
+	if target_dist < 0.5:
+		velocity = Vector3.ZERO
+		_state = State.IDLE
+		return
+
+	if target_dist < 5.0:
+		velocity = to_target.normalized() * move_speed
+		_face_direction(to_target)
+		return
+
+	if _nav_agent.is_navigation_finished():
+		velocity = to_target.normalized() * move_speed
+		_face_direction(to_target)
+		return
+	var next_pos := _nav_agent.get_next_path_position()
+	var dir := next_pos - global_position
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity = dir.normalized() * move_speed
+		_face_direction(dir)
+
+func _do_move_to(target: Vector3) -> void:
+	_nav_agent.target_position = target
+	var to_target := target - global_position
 	to_target.y = 0.0
 	var target_dist := to_target.length()
 
@@ -169,19 +190,13 @@ func _do_attack(_delta: float) -> void:
 	var diff := _attack_target.global_position - global_position
 	diff.y = 0.0
 	var dist := diff.length()
-	var eff_range := _get_effective_range(_attack_target)
 
-	if dist > eff_range:
-		var target_pos := _attack_target.global_position
-		if _is_building(_attack_target):
-			var approach_dir := Vector3(cos(_building_angle_offset), 0, sin(_building_angle_offset))
-			target_pos = _attack_target.global_position + approach_dir * 3.5
-
+	if dist > attack_range:
 		if dist < 5.0:
 			velocity = diff.normalized() * move_speed
 			_face_direction(diff)
 		else:
-			_nav_agent.target_position = target_pos
+			_nav_agent.target_position = _attack_target.global_position
 			var next_pos := _nav_agent.get_next_path_position()
 			var dir := next_pos - global_position
 			dir.y = 0.0
@@ -193,40 +208,37 @@ func _do_attack(_delta: float) -> void:
 		_face_direction(diff)
 		if _attack_timer <= 0.0:
 			_attack_timer = attack_cooldown
-			_do_melee_hit()
+			_do_melee_swipe()
 
-func _do_melee_hit() -> void:
+func _do_melee_swipe() -> void:
 	if _attack_target == null or not is_instance_valid(_attack_target):
 		return
+	# Swipe animation - tween mesh sideways then back
 	var orig_pos := _mesh.position
 	var tween := get_tree().create_tween()
-	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.2), 0.04)
-	tween.tween_property(_mesh, "position", orig_pos, 0.08)
+	tween.tween_property(_mesh, "position", orig_pos + Vector3(0.3, 0, 0), 0.1)
+	tween.tween_property(_mesh, "position", orig_pos + Vector3(-0.3, 0, 0), 0.1)
+	tween.tween_property(_mesh, "position", orig_pos, 0.1)
 
+	# Apply damage directly
 	if _attack_target.has_method("take_damage"):
 		_attack_target.take_damage(attack_damage, self)
 
 func _auto_acquire_target() -> void:
-	var scan_range := 15.0
-	var closest_dist := scan_range
+	var closest_dist: float = vision_range
 	var closest: Node3D = null
-
-	for group_name in ["player_units", "units", "human_buildings"]:
-		for target in get_tree().get_nodes_in_group(group_name):
-			if not is_instance_valid(target):
+	for group_name in ["enemy_units", "enemy_buildings"]:
+		for enemy in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(enemy):
 				continue
-			if target.is_in_group("enemy_units") or target.is_in_group("enemies"):
-				continue
-			var dist: float = global_position.distance_to(target.global_position)
+			var dist: float = global_position.distance_to(enemy.global_position)
 			if dist < closest_dist:
 				closest_dist = dist
-				closest = target
-		if closest != null:
-			break
-
+				closest = enemy
 	if closest != null:
 		_attack_target = closest
-		_state = State.ATTACKING
+		if _state == State.IDLE:
+			_state = State.ATTACKING
 
 func _face_direction(dir: Vector3) -> void:
 	if dir.length() > 0.01:
