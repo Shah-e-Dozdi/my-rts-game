@@ -620,7 +620,7 @@ func _recall_control_group(idx: int) -> void:
 func _on_right_click(screen_pos: Vector2) -> void:
 	if _selected.is_empty():
 		return
-	var hit := _raycast(screen_pos)
+	var hit := _raycast(screen_pos, _selected)
 	if hit.is_empty():
 		return
 
@@ -638,14 +638,26 @@ func _on_right_click(screen_pos: Vector2) -> void:
 				u.command_gather(resource, _hq)
 		return
 
+	var movers: Array = []
 	for u in _selected:
 		if u != null and u.has_method("command_move"):
-			u.command_move(hit.position)
+			movers.append(u)
+	if movers.is_empty():
+		return
+
+	var count := movers.size()
+	var cols := int(ceil(sqrt(float(count))))
+	var spacing := 1.4
+	for i in count:
+		var row := i / cols
+		var col := i % cols
+		var offset := Vector3((float(col) - float(cols - 1) * 0.5) * spacing, 0.0, (float(row) - float(cols - 1) * 0.5) * spacing)
+		movers[i].command_move(hit.position + offset)
 
 func _on_attack_click(screen_pos: Vector2) -> void:
 	if _selected.is_empty():
 		return
-	var hit := _raycast(screen_pos)
+	var hit := _raycast(screen_pos, _selected)
 	if hit.is_empty():
 		return
 
@@ -973,10 +985,11 @@ func _update_floating_texts(delta: float) -> void:
 
 # ─── RAYCASTING / HELPERS ───────────────────────────────────
 
-func _raycast(screen_pos: Vector2) -> Dictionary:
+func _raycast(screen_pos: Vector2, exclude: Array = []) -> Dictionary:
 	var origin := _camera.project_ray_origin(screen_pos)
 	var end := origin + _camera.project_ray_normal(screen_pos) * 500.0
 	var query := PhysicsRayQueryParameters3D.create(origin, end)
+	query.exclude = exclude
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _find_selectable(collider: Object) -> Node:
@@ -991,22 +1004,25 @@ func _find_selectable(collider: Object) -> Node:
 	return null
 
 func _find_resource(collider: Object) -> Node3D:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	if collider is Node and collider.is_in_group("resource_nodes"):
-		return collider
-	if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group("resource_nodes"):
-		return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("resource_nodes"):
+			return current
+		current = current.get_parent()
 	return null
 
 func _find_enemy(collider: Object) -> Node3D:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	for group_name in ["enemy_units", "enemy_buildings"]:
-		if collider is Node and collider.is_in_group(group_name):
-			return collider
-		if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group(group_name):
-			return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("enemy_units") or current.is_in_group("enemy_buildings"):
+			return current
+		current = current.get_parent()
 	return null
 
 # ─── UI REFRESH ──────────────────────────────────────────────
@@ -1052,9 +1068,11 @@ func _update_command_panel() -> void:
 	var key := "default"
 	if _selected.size() == 1 and is_instance_valid(_selected[0]):
 		var sel := _selected[0]
-		if sel == _hq and is_instance_valid(_hq):
+		var is_hq := (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker"))
+		var is_barracks := sel.is_in_group("barracks") or sel.has_method("queue_wolf")
+		if is_hq:
 			key = "hq_%d_%d_%d" % [_wood, _supply, _max_supply]
-		elif sel.is_in_group("barracks"):
+		elif is_barracks:
 			key = "barracks_%d_%d_%d_%d" % [_wood, _resin, _supply, _max_supply]
 	if _attack_cursor:
 		key = "attack"
@@ -1071,10 +1089,10 @@ func _update_command_panel() -> void:
 	# Check if a single building is selected to show command cards
 	if _selected.size() == 1 and is_instance_valid(_selected[0]):
 		var sel := _selected[0]
-		if sel == _hq and is_instance_valid(_hq):
-			_build_hq_command_cards()
+		if (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker")):
+			_build_hq_command_cards(sel)
 			return
-		if sel.is_in_group("barracks"):
+		if sel.is_in_group("barracks") or sel.has_method("queue_wolf"):
 			_build_barracks_command_cards(sel)
 			return
 
@@ -1100,7 +1118,7 @@ func _update_command_panel() -> void:
 	lbl.add_theme_font_size_override("font_size", 13)
 	_command_panel.add_child(lbl)
 
-func _build_hq_command_cards() -> void:
+func _build_hq_command_cards(hq: Node3D) -> void:
 	var title := Label.new()
 	title.text = "HQ - Production"
 	title.add_theme_font_size_override("font_size", 15)
@@ -1111,11 +1129,11 @@ func _build_hq_command_cards() -> void:
 	row.add_theme_constant_override("separation", 8)
 	_command_panel.add_child(row)
 
-	var can_afford: bool = _wood >= _hq.worker_cost
+	var can_afford: bool = _wood >= hq.worker_cost
 	var can_supply: bool = _supply < _max_supply
 	_add_command_card(row, "[Q] Worker", {
 		"HP": "45", "ATK": "5", "SPD": "5.5", "Range": "Melee",
-		"Cost": "%d wood" % _hq.worker_cost, "Supply": "1",
+		"Cost": "%d wood" % hq.worker_cost, "Supply": "1",
 		"Role": "Gathers wood & resin"
 	}, can_afford and can_supply, _try_train_worker)
 

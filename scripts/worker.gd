@@ -125,7 +125,7 @@ func command_gather(resource: Node3D, hq: Node3D) -> void:
 	_hq = hq
 	if _resource_target == null or _hq == null:
 		return
-	_move_target = _resource_target.global_position
+	_move_target = _resource_approach_position(_resource_target)
 	_nav_agent.target_position = _move_target
 	_state = State.MOVING
 
@@ -157,6 +157,13 @@ func _update_appearance() -> void:
 			_mesh.material_override = _mat_carrying_wood
 	else:
 		_mesh.material_override = _mat_default
+
+
+func _resource_approach_position(resource: Node3D) -> Vector3:
+	var base := resource.global_position
+	var angle := float(get_instance_id() % 360) * PI / 180.0
+	var radius := 1.2 + float(get_instance_id() % 5) * 0.15
+	return base + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
 
 func _do_move() -> void:
 	var to_target := _move_target - global_position
@@ -245,7 +252,7 @@ func _do_return() -> void:
 			_carried = 0
 			_update_appearance()
 		if _resource_target != null:
-			_move_target = _resource_target.global_position
+			_move_target = _resource_approach_position(_resource_target)
 			_nav_agent.target_position = _move_target
 			_state = State.MOVING
 		else:
