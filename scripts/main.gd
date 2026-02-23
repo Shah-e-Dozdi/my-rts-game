@@ -1,14 +1,12 @@
 extends Node3D
 
 const WorkerScene := preload("res://scenes/Worker.tscn")
-const SoldierScene := preload("res://scenes/Soldier.tscn")
-const ScoutScene := preload("res://scenes/Scout.tscn")
-const SniperScene := preload("res://scenes/Sniper.tscn")
-const HeavyScene := preload("res://scenes/Heavy.tscn")
+const WolfScene := preload("res://scenes/Wolf.tscn")
+const BearScene := preload("res://scenes/Bear.tscn")
+const PrimateThrowerScene := preload("res://scenes/PrimateThrower.tscn")
 const HQScene := preload("res://scenes/HQ.tscn")
 const BarracksScene := preload("res://scenes/Barracks.tscn")
 const SupplyDepotScene := preload("res://scenes/SupplyDepot.tscn")
-const ArmoryScene := preload("res://scenes/Armory.tscn")
 const ResourceScene := preload("res://scenes/ResourceNode.tscn")
 const EnemyMeleeScene := preload("res://scenes/EnemyMelee.tscn")
 const CameraScript := preload("res://scripts/camera_controller.gd")
@@ -42,14 +40,14 @@ const DOUBLE_CLICK_TIME := 0.35
 var _control_groups: Array[Array] = []
 
 # Resources
-var _minerals := 50
-var _gas := 0
+var _wood := 50
+var _resin := 0
 var _supply := 6
 var _max_supply := 15
 var _hq: Node3D = null
 
 # Building placement
-enum PlaceMode { NONE, BARRACKS, SUPPLY_DEPOT, ARMORY }
+enum PlaceMode { NONE, BARRACKS, SUPPLY_DEPOT }
 var _place_mode: PlaceMode = PlaceMode.NONE
 var _ghost: MeshInstance3D = null
 var _ghost_mat_valid: StandardMaterial3D
@@ -76,7 +74,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_ui()
 	_spawn_base()
-	_spawn_minerals()
+	_spawn_resources()
 	_bake_nav_mesh()
 	_setup_enemy_ai()
 	_setup_fog_of_war()
@@ -237,17 +235,29 @@ func _spawn_base() -> void:
 		var angle := TAU * float(i) / 6.0
 		w.position = Vector3(cos(angle) * 4.0, 0.0, sin(angle) * 4.0 + 6.0)
 		w.set_hq(_hq)
-		w.minerals_delivered.connect(_on_minerals)
+		w.wood_delivered.connect(_on_wood)
+		w.resin_delivered.connect(_on_resin)
 		_world.add_child(w)
 		_add_health_bar(w)
 
-func _spawn_minerals() -> void:
-	var positions := [
+func _spawn_resources() -> void:
+	# Wood (trees)
+	var wood_positions := [
 		Vector3(-8, 0, -12), Vector3(-5, 0, -15), Vector3(-2, 0, -12),
 		Vector3(2, 0, -13), Vector3(6, 0, -15), Vector3(9, 0, -12),
 	]
-	for pos in positions:
+	for pos in wood_positions:
 		var r := ResourceScene.instantiate()
+		r.position = pos
+		_nav_region.add_child(r)
+
+	# Resin nodes
+	var resin_positions := [
+		Vector3(15, 0, -8), Vector3(18, 0, -11), Vector3(21, 0, -9),
+	]
+	for pos in resin_positions:
+		var r := ResourceScene.instantiate()
+		r.resource_type = "resin"
 		r.position = pos
 		_nav_region.add_child(r)
 
@@ -305,8 +315,6 @@ func _process(delta: float) -> void:
 					_ghost.global_position.y = 0.9
 				PlaceMode.SUPPLY_DEPOT:
 					_ghost.global_position.y = 0.6
-				PlaceMode.ARMORY:
-					_ghost.global_position.y = 1.1
 			_ghost.material_override = _ghost_mat_valid if _can_place(snap_pos) else _ghost_mat_invalid
 
 	_recalc_supply()
@@ -361,23 +369,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key == KEY_V and _place_mode == PlaceMode.NONE:
 			_start_placement(PlaceMode.SUPPLY_DEPOT)
 			return
-		if key == KEY_T and _place_mode == PlaceMode.NONE:
-			_start_placement(PlaceMode.ARMORY)
-			return
 		if key == KEY_Q:
 			_try_train_worker()
 			return
 		if key == KEY_R:
-			_try_train_soldier()
+			_try_train_wolf()
 			return
 		if key == KEY_E:
-			_try_train_scout()
+			_try_train_primate()
 			return
 		if key == KEY_F:
-			_try_train_sniper()
-			return
-		if key == KEY_G:
-			_try_train_heavy()
+			_try_train_bear()
 			return
 
 	if event is InputEventMouseButton:
@@ -574,18 +576,16 @@ func _select_all_of_type(reference: Node) -> void:
 	var ref_groups := []
 	if reference.is_in_group("workers"):
 		ref_groups = ["workers"]
-	elif reference.is_in_group("scouts"):
-		ref_groups = ["scouts"]
-	elif reference.is_in_group("snipers"):
-		ref_groups = ["snipers"]
-	elif reference.is_in_group("heavies"):
-		ref_groups = ["heavies"]
+	elif reference.is_in_group("wolves"):
+		ref_groups = ["wolves"]
+	elif reference.is_in_group("bears"):
+		ref_groups = ["bears"]
+	elif reference.is_in_group("primates"):
+		ref_groups = ["primates"]
 	elif reference.is_in_group("combat_units"):
 		ref_groups = ["combat_units"]
 	elif reference.is_in_group("barracks"):
 		ref_groups = ["barracks"]
-	elif reference.is_in_group("armories"):
-		ref_groups = ["armories"]
 	elif reference.is_in_group("supply_depots"):
 		ref_groups = ["supply_depots"]
 	else:
@@ -693,8 +693,6 @@ func _start_placement(mode: PlaceMode) -> void:
 			mesh.size = Vector3(4, 1.8, 3)
 		PlaceMode.SUPPLY_DEPOT:
 			mesh.size = Vector3(2.5, 1.2, 2.5)
-		PlaceMode.ARMORY:
-			mesh.size = Vector3(4, 2.2, 3.5)
 	_ghost.mesh = mesh
 	_ghost.material_override = _ghost_mat_valid
 	_world.add_child(_ghost)
@@ -720,14 +718,12 @@ func _try_place_building(screen_pos: Vector2) -> void:
 			cost = 150
 		PlaceMode.SUPPLY_DEPOT:
 			cost = 100
-		PlaceMode.ARMORY:
-			cost = 200
 
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	if _wood < cost:
+		_show_warning("Not enough wood! (need %d)" % cost)
 		return
 
-	_minerals -= cost
+	_wood -= cost
 
 	match _place_mode:
 		PlaceMode.BARRACKS:
@@ -741,15 +737,6 @@ func _try_place_building(screen_pos: Vector2) -> void:
 			s.position = pos
 			_nav_region.add_child(s)
 			_add_health_bar(s, 2.0, 1.5)
-		PlaceMode.ARMORY:
-			if get_tree().get_nodes_in_group("barracks").is_empty():
-				_show_warning("Build a Barracks first!")
-				return
-			var a := ArmoryScene.instantiate()
-			a.position = pos
-			_nav_region.add_child(a)
-			a.production_finished.connect(_on_production_finished)
-			_add_health_bar(a, 3.0, 2.0)
 
 	_cancel_placement()
 	# Rebake nav mesh so units path around new building
@@ -779,94 +766,89 @@ func _try_train_worker() -> void:
 		_show_warning("No HQ!")
 		return
 	var cost: int = _hq.WORKER_COST
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	if _wood < cost:
+		_show_warning("Not enough wood! (need %d)" % cost)
 		return
 	if _supply >= _max_supply:
 		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
-	_minerals -= cost
+	_wood -= cost
 	_hq.queue_worker(WorkerScene)
 	_refresh_ui()
 
-func _try_train_soldier() -> void:
+func _try_train_wolf() -> void:
 	var barracks_list := get_tree().get_nodes_in_group("barracks")
 	if barracks_list.is_empty():
 		_show_warning("Build a Barracks first! [B]")
 		return
 	var barracks: Node3D = barracks_list[0]
-	if not barracks.has_method("queue_soldier"):
+	if not barracks.has_method("queue_wolf"):
 		return
-	var cost: int = barracks.SOLDIER_COST
-	var supply_cost: int = barracks.SOLDIER_SUPPLY
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	var cost_wood: int = barracks.WOLF_COST_WOOD
+	var cost_resin: int = barracks.WOLF_COST_RESIN
+	var supply_cost: int = barracks.WOLF_SUPPLY
+	if _wood < cost_wood:
+		_show_warning("Not enough wood! (need %d)" % cost_wood)
+		return
+	if _resin < cost_resin:
+		_show_warning("Not enough resin! (need %d)" % cost_resin)
 		return
 	if _supply + supply_cost > _max_supply:
 		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
-	_minerals -= cost
-	barracks.queue_soldier(SoldierScene)
+	_wood -= cost_wood
+	_resin -= cost_resin
+	barracks.queue_wolf(WolfScene)
 	_refresh_ui()
 
-func _try_train_scout() -> void:
+func _try_train_primate() -> void:
 	var barracks_list := get_tree().get_nodes_in_group("barracks")
 	if barracks_list.is_empty():
 		_show_warning("Build a Barracks first! [B]")
 		return
 	var barracks: Node3D = barracks_list[0]
-	if not barracks.has_method("queue_scout"):
+	if not barracks.has_method("queue_primate"):
 		return
-	var cost: int = barracks.SCOUT_COST
-	var supply_cost: int = barracks.SCOUT_SUPPLY
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	var cost_wood: int = barracks.PRIMATE_COST_WOOD
+	var cost_resin: int = barracks.PRIMATE_COST_RESIN
+	var supply_cost: int = barracks.PRIMATE_SUPPLY
+	if _wood < cost_wood:
+		_show_warning("Not enough wood! (need %d)" % cost_wood)
+		return
+	if _resin < cost_resin:
+		_show_warning("Not enough resin! (need %d)" % cost_resin)
 		return
 	if _supply + supply_cost > _max_supply:
 		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
-	_minerals -= cost
-	barracks.queue_scout(ScoutScene)
+	_wood -= cost_wood
+	_resin -= cost_resin
+	barracks.queue_primate(PrimateThrowerScene)
 	_refresh_ui()
 
-func _try_train_sniper() -> void:
-	var armory_list := get_tree().get_nodes_in_group("armories")
-	if armory_list.is_empty():
-		_show_warning("Build an Armory first! [T]")
+func _try_train_bear() -> void:
+	var barracks_list := get_tree().get_nodes_in_group("barracks")
+	if barracks_list.is_empty():
+		_show_warning("Build a Barracks first! [B]")
 		return
-	var armory: Node3D = armory_list[0]
-	if not armory.has_method("queue_sniper"):
+	var barracks: Node3D = barracks_list[0]
+	if not barracks.has_method("queue_bear"):
 		return
-	var cost: int = armory.SNIPER_COST
-	var supply_cost: int = armory.SNIPER_SUPPLY
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	var cost_wood: int = barracks.BEAR_COST_WOOD
+	var cost_resin: int = barracks.BEAR_COST_RESIN
+	var supply_cost: int = barracks.BEAR_SUPPLY
+	if _wood < cost_wood:
+		_show_warning("Not enough wood! (need %d)" % cost_wood)
 		return
-	if _supply + supply_cost > _max_supply:
-		_show_warning("Supply capped! Build a Supply Depot [V]")
-		return
-	_minerals -= cost
-	armory.queue_sniper(SniperScene)
-	_refresh_ui()
-
-func _try_train_heavy() -> void:
-	var armory_list := get_tree().get_nodes_in_group("armories")
-	if armory_list.is_empty():
-		_show_warning("Build an Armory first! [T]")
-		return
-	var armory: Node3D = armory_list[0]
-	if not armory.has_method("queue_heavy"):
-		return
-	var cost: int = armory.HEAVY_COST
-	var supply_cost: int = armory.HEAVY_SUPPLY
-	if _minerals < cost:
-		_show_warning("Not enough minerals! (need %d)" % cost)
+	if _resin < cost_resin:
+		_show_warning("Not enough resin! (need %d)" % cost_resin)
 		return
 	if _supply + supply_cost > _max_supply:
 		_show_warning("Supply capped! Build a Supply Depot [V]")
 		return
-	_minerals -= cost
-	armory.queue_heavy(HeavyScene)
+	_wood -= cost_wood
+	_resin -= cost_resin
+	barracks.queue_bear(BearScene)
 	_refresh_ui()
 
 func _on_production_finished(unit_scene: PackedScene, spawn_pos: Vector3) -> void:
@@ -876,14 +858,21 @@ func _on_production_finished(unit_scene: PackedScene, spawn_pos: Vector3) -> voi
 
 	if unit.has_method("set_hq"):
 		unit.set_hq(_hq)
-	if unit.has_signal("minerals_delivered"):
-		unit.minerals_delivered.connect(_on_minerals)
+	if unit.has_signal("wood_delivered"):
+		unit.wood_delivered.connect(_on_wood)
+	if unit.has_signal("resin_delivered"):
+		unit.resin_delivered.connect(_on_resin)
 
 	_add_health_bar(unit)
 
-func _on_minerals(amount: int) -> void:
-	_minerals += amount
-	_spawn_floating_text("+%d" % amount, Color(0.3, 0.8, 1.0))
+func _on_wood(amount: int) -> void:
+	_wood += amount
+	_spawn_floating_text("+%d wood" % amount, Color(0.6, 0.45, 0.2))
+	_refresh_ui()
+
+func _on_resin(amount: int) -> void:
+	_resin += amount
+	_spawn_floating_text("+%d resin" % amount, Color(0.85, 0.6, 0.15))
 	_refresh_ui()
 
 # ─── SUPPLY ──────────────────────────────────────────────────
@@ -901,10 +890,12 @@ func _recalc_supply() -> void:
 		if is_instance_valid(u):
 			if u.is_in_group("workers"):
 				used += 1
-			elif u.is_in_group("scouts"):
+			elif u.is_in_group("wolves"):
 				used += 1
-			elif u.is_in_group("heavies"):
+			elif u.is_in_group("bears"):
 				used += 3
+			elif u.is_in_group("primates"):
+				used += 2
 			elif u.is_in_group("combat_units"):
 				used += 2
 	_supply = used
@@ -1023,18 +1014,16 @@ func _refresh_ui() -> void:
 		else:
 			if first.is_in_group("workers"):
 				sel_text = "Workers: %d" % _selected.size()
-			elif first.is_in_group("scouts"):
-				sel_text = "Scouts: %d" % _selected.size()
-			elif first.is_in_group("snipers"):
-				sel_text = "Snipers: %d" % _selected.size()
-			elif first.is_in_group("heavies"):
-				sel_text = "Heavies: %d" % _selected.size()
+			elif first.is_in_group("wolves"):
+				sel_text = "Wolves: %d" % _selected.size()
+			elif first.is_in_group("bears"):
+				sel_text = "Bears: %d" % _selected.size()
+			elif first.is_in_group("primates"):
+				sel_text = "Primates: %d" % _selected.size()
 			elif first.is_in_group("combat_units"):
-				sel_text = "Soldiers: %d" % _selected.size()
+				sel_text = "Combat: %d" % _selected.size()
 			elif first.is_in_group("barracks"):
 				sel_text = "Barracks"
-			elif first.is_in_group("armories"):
-				sel_text = "Armory"
 			elif first.is_in_group("supply_depots"):
 				sel_text = "Supply Depot"
 			elif first == _hq:
@@ -1049,7 +1038,7 @@ func _refresh_ui() -> void:
 	else:
 		sel_text = "No selection"
 
-	_info_label.text = "Minerals: %d  Gas: %d\nSupply: %d / %d\n%s" % [_minerals, _gas, _supply, _max_supply, sel_text]
+	_info_label.text = "Wood: %d  Resin: %d\nSupply: %d / %d\n%s" % [_wood, _resin, _supply, _max_supply, sel_text]
 	_update_command_panel()
 
 func _update_command_panel() -> void:
@@ -1067,9 +1056,9 @@ func _update_command_panel() -> void:
 	elif _place_mode != PlaceMode.NONE:
 		help_text += "\n[PLACING] LMB: Confirm  RMB/Esc: Cancel"
 	else:
-		help_text += "\n[B] Barracks (150)  [V] Supply Depot (100)  [T] Armory (200)"
-		help_text += "\n[Q] Worker (50)  [R] Soldier (75)  [E] Scout (40)"
-		help_text += "\n[F] Sniper (125, Armory)  [G] Heavy (150, Armory)"
+		help_text += "\n[B] Barracks (150 wood)  [V] Supply Depot (100 wood)"
+		help_text += "\n[Q] Worker (50 wood)  [R] Wolf (60 wood)"
+		help_text += "\n[E] Primate (75w/15r)  [F] Bear (100w/25r)"
 		help_text += "\nObjective: Destroy the enemy base!"
 
 	var lbl := Label.new()
@@ -1087,10 +1076,5 @@ func _update_production_label() -> void:
 		if is_instance_valid(barracks) and barracks.get_queue_size() > 0:
 			var progress: float = barracks.get_build_progress()
 			text += "Barracks: Training [%d%%] (queue: %d)\n" % [int(progress * 100), barracks.get_queue_size()]
-
-	for armory in get_tree().get_nodes_in_group("armories"):
-		if is_instance_valid(armory) and armory.get_queue_size() > 0:
-			var progress: float = armory.get_build_progress()
-			text += "Armory: Training [%d%%] (queue: %d)\n" % [int(progress * 100), armory.get_queue_size()]
 
 	_production_label.text = text

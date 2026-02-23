@@ -1,6 +1,0 @@
-[gd_scene format=3]
-
-[ext_resource type="Script" path="res://scripts/heavy.gd" id="1"]
-
-[node name="Heavy" type="CharacterBody3D"]
-script = ExtResource("1")
