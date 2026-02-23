@@ -10,20 +10,20 @@ var _queue: Array[Dictionary] = []
 var _build_timer := 0.0
 var _is_building := false
 
-const WOLF_COST_WOOD := 60
-const WOLF_COST_RESIN := 0
-const WOLF_SUPPLY := 1
-const WOLF_BUILD_TIME := 7.0
+@export var wolf_cost_wood := 60
+@export var wolf_cost_resin := 0
+@export var wolf_supply := 1
+@export var wolf_build_time := 7.0
 
-const BEAR_COST_WOOD := 100
-const BEAR_COST_RESIN := 25
-const BEAR_SUPPLY := 3
-const BEAR_BUILD_TIME := 16.0
+@export var bear_cost_wood := 100
+@export var bear_cost_resin := 25
+@export var bear_supply := 3
+@export var bear_build_time := 16.0
 
-const PRIMATE_COST_WOOD := 75
-const PRIMATE_COST_RESIN := 15
-const PRIMATE_SUPPLY := 2
-const PRIMATE_BUILD_TIME := 12.0
+@export var primate_cost_wood := 75
+@export var primate_cost_resin := 15
+@export var primate_supply := 2
+@export var primate_build_time := 12.0
 
 func _ready() -> void:
 	hp = max_hp
@@ -93,17 +93,17 @@ func _process(delta: float) -> void:
 		_queue.pop_front()
 
 func queue_wolf(scene: PackedScene) -> void:
-	_queue.append({"scene": scene, "build_time": WOLF_BUILD_TIME})
+	_queue.append({"scene": scene, "build_time": wolf_build_time})
 	if _queue.size() == 1:
 		_build_timer = 0.0
 
 func queue_bear(scene: PackedScene) -> void:
-	_queue.append({"scene": scene, "build_time": BEAR_BUILD_TIME})
+	_queue.append({"scene": scene, "build_time": bear_build_time})
 	if _queue.size() == 1:
 		_build_timer = 0.0
 
 func queue_primate(scene: PackedScene) -> void:
-	_queue.append({"scene": scene, "build_time": PRIMATE_BUILD_TIME})
+	_queue.append({"scene": scene, "build_time": primate_build_time})
 	if _queue.size() == 1:
 		_build_timer = 0.0
 
