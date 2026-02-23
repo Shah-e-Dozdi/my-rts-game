@@ -1088,8 +1088,8 @@ func _build_hq_command_cards() -> void:
 	row.add_theme_constant_override("separation", 8)
 	_command_panel.add_child(row)
 
-	var can_afford := _wood >= _hq.WORKER_COST
-	var can_supply := _supply < _max_supply
+	var can_afford: bool = _wood >= _hq.WORKER_COST
+	var can_supply: bool = _supply < _max_supply
 	_add_command_card(row, "[Q] Worker", {
 		"HP": "45", "ATK": "5", "SPD": "5.5", "Range": "Melee",
 		"Cost": "%d wood" % _hq.WORKER_COST, "Supply": "1",
@@ -1108,8 +1108,8 @@ func _build_barracks_command_cards(barracks: Node3D) -> void:
 	_command_panel.add_child(row)
 
 	# Wolf card
-	var wolf_afford := _wood >= barracks.WOLF_COST_WOOD and _resin >= barracks.WOLF_COST_RESIN
-	var wolf_supply := _supply + barracks.WOLF_SUPPLY <= _max_supply
+	var wolf_afford: bool = _wood >= barracks.WOLF_COST_WOOD and _resin >= barracks.WOLF_COST_RESIN
+	var wolf_supply: bool = _supply + barracks.WOLF_SUPPLY <= _max_supply
 	var wolf_cost := "%dw" % barracks.WOLF_COST_WOOD
 	if barracks.WOLF_COST_RESIN > 0:
 		wolf_cost += "/%dr" % barracks.WOLF_COST_RESIN
@@ -1120,8 +1120,8 @@ func _build_barracks_command_cards(barracks: Node3D) -> void:
 	}, wolf_afford and wolf_supply, _try_train_wolf)
 
 	# Primate card
-	var primate_afford := _wood >= barracks.PRIMATE_COST_WOOD and _resin >= barracks.PRIMATE_COST_RESIN
-	var primate_supply := _supply + barracks.PRIMATE_SUPPLY <= _max_supply
+	var primate_afford: bool = _wood >= barracks.PRIMATE_COST_WOOD and _resin >= barracks.PRIMATE_COST_RESIN
+	var primate_supply: bool = _supply + barracks.PRIMATE_SUPPLY <= _max_supply
 	var primate_cost := "%dw/%dr" % [barracks.PRIMATE_COST_WOOD, barracks.PRIMATE_COST_RESIN]
 	_add_command_card(row, "[E] Primate", {
 		"HP": "50", "ATK": "9", "SPD": "5.0", "Range": "14",
@@ -1130,8 +1130,8 @@ func _build_barracks_command_cards(barracks: Node3D) -> void:
 	}, primate_afford and primate_supply, _try_train_primate)
 
 	# Bear card
-	var bear_afford := _wood >= barracks.BEAR_COST_WOOD and _resin >= barracks.BEAR_COST_RESIN
-	var bear_supply := _supply + barracks.BEAR_SUPPLY <= _max_supply
+	var bear_afford: bool = _wood >= barracks.BEAR_COST_WOOD and _resin >= barracks.BEAR_COST_RESIN
+	var bear_supply: bool = _supply + barracks.BEAR_SUPPLY <= _max_supply
 	var bear_cost := "%dw/%dr" % [barracks.BEAR_COST_WOOD, barracks.BEAR_COST_RESIN]
 	_add_command_card(row, "[F] Bear", {
 		"HP": "150", "ATK": "12", "SPD": "4.0", "Range": "Melee",
