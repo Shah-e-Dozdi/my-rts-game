@@ -103,7 +103,7 @@ func _is_position_visible(world_pos: Vector3) -> bool:
 		var vision: float = DEFAULT_UNIT_VISION
 		if "vision_range" in unit:
 			vision = unit.vision_range
-		var diff := unit.global_position - world_pos
+		var diff: Vector3 = unit.global_position - world_pos
 		diff.y = 0.0
 		if diff.length() <= vision:
 			return true
@@ -112,7 +112,7 @@ func _is_position_visible(world_pos: Vector3) -> bool:
 	for bld in get_tree().get_nodes_in_group("human_buildings"):
 		if not is_instance_valid(bld):
 			continue
-		var diff := bld.global_position - world_pos
+		var diff: Vector3 = bld.global_position - world_pos
 		diff.y = 0.0
 		if diff.length() <= DEFAULT_BUILDING_VISION:
 			return true
