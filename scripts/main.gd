@@ -620,7 +620,7 @@ func _recall_control_group(idx: int) -> void:
 func _on_right_click(screen_pos: Vector2) -> void:
 	if _selected.is_empty():
 		return
-	var hit := _raycast(screen_pos)
+	var hit := _raycast(screen_pos, _selected)
 	if hit.is_empty():
 		return
 
@@ -638,14 +638,26 @@ func _on_right_click(screen_pos: Vector2) -> void:
 				u.command_gather(resource, _hq)
 		return
 
+	var movers: Array = []
 	for u in _selected:
 		if u != null and u.has_method("command_move"):
-			u.command_move(hit.position)
+			movers.append(u)
+	if movers.is_empty():
+		return
+
+	var count := movers.size()
+	var cols := int(ceil(sqrt(float(count))))
+	var spacing := 1.4
+	for i in count:
+		var row := i / cols
+		var col := i % cols
+		var offset := Vector3((float(col) - float(cols - 1) * 0.5) * spacing, 0.0, (float(row) - float(cols - 1) * 0.5) * spacing)
+		movers[i].command_move(hit.position + offset)
 
 func _on_attack_click(screen_pos: Vector2) -> void:
 	if _selected.is_empty():
 		return
-	var hit := _raycast(screen_pos)
+	var hit := _raycast(screen_pos, _selected)
 	if hit.is_empty():
 		return
 
@@ -769,7 +781,7 @@ func _try_train_worker() -> void:
 	if _hq == null or not is_instance_valid(_hq):
 		_show_warning("No HQ!")
 		return
-	var cost: int = _hq.WORKER_COST
+	var cost: int = _hq.worker_cost
 	if _wood < cost:
 		_show_warning("Not enough wood! (need %d)" % cost)
 		return
@@ -788,9 +800,9 @@ func _try_train_wolf() -> void:
 	var barracks: Node3D = barracks_list[0]
 	if not barracks.has_method("queue_wolf"):
 		return
-	var cost_wood: int = barracks.WOLF_COST_WOOD
-	var cost_resin: int = barracks.WOLF_COST_RESIN
-	var supply_cost: int = barracks.WOLF_SUPPLY
+	var cost_wood: int = barracks.wolf_cost_wood
+	var cost_resin: int = barracks.wolf_cost_resin
+	var supply_cost: int = barracks.wolf_supply
 	if _wood < cost_wood:
 		_show_warning("Not enough wood! (need %d)" % cost_wood)
 		return
@@ -813,9 +825,9 @@ func _try_train_primate() -> void:
 	var barracks: Node3D = barracks_list[0]
 	if not barracks.has_method("queue_primate"):
 		return
-	var cost_wood: int = barracks.PRIMATE_COST_WOOD
-	var cost_resin: int = barracks.PRIMATE_COST_RESIN
-	var supply_cost: int = barracks.PRIMATE_SUPPLY
+	var cost_wood: int = barracks.primate_cost_wood
+	var cost_resin: int = barracks.primate_cost_resin
+	var supply_cost: int = barracks.primate_supply
 	if _wood < cost_wood:
 		_show_warning("Not enough wood! (need %d)" % cost_wood)
 		return
@@ -838,9 +850,9 @@ func _try_train_bear() -> void:
 	var barracks: Node3D = barracks_list[0]
 	if not barracks.has_method("queue_bear"):
 		return
-	var cost_wood: int = barracks.BEAR_COST_WOOD
-	var cost_resin: int = barracks.BEAR_COST_RESIN
-	var supply_cost: int = barracks.BEAR_SUPPLY
+	var cost_wood: int = barracks.bear_cost_wood
+	var cost_resin: int = barracks.bear_cost_resin
+	var supply_cost: int = barracks.bear_supply
 	if _wood < cost_wood:
 		_show_warning("Not enough wood! (need %d)" % cost_wood)
 		return
@@ -973,38 +985,44 @@ func _update_floating_texts(delta: float) -> void:
 
 # ─── RAYCASTING / HELPERS ───────────────────────────────────
 
-func _raycast(screen_pos: Vector2) -> Dictionary:
+func _raycast(screen_pos: Vector2, exclude: Array = []) -> Dictionary:
 	var origin := _camera.project_ray_origin(screen_pos)
 	var end := origin + _camera.project_ray_normal(screen_pos) * 500.0
 	var query := PhysicsRayQueryParameters3D.create(origin, end)
+	query.exclude = exclude
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _find_selectable(collider: Object) -> Node:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	if collider is Node and collider.is_in_group("selectable"):
-		return collider
-	if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group("selectable"):
-		return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("selectable"):
+			return current
+		current = current.get_parent()
 	return null
 
 func _find_resource(collider: Object) -> Node3D:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	if collider is Node and collider.is_in_group("resource_nodes"):
-		return collider
-	if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group("resource_nodes"):
-		return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("resource_nodes"):
+			return current
+		current = current.get_parent()
 	return null
 
 func _find_enemy(collider: Object) -> Node3D:
-	if collider == null:
+	if collider == null or not (collider is Node):
 		return null
-	for group_name in ["enemy_units", "enemy_buildings"]:
-		if collider is Node and collider.is_in_group(group_name):
-			return collider
-		if collider is Node and collider.get_parent() != null and collider.get_parent().is_in_group(group_name):
-			return collider.get_parent()
+
+	var current: Node = collider
+	while current != null:
+		if current.is_in_group("enemy_units") or current.is_in_group("enemy_buildings"):
+			return current
+		current = current.get_parent()
 	return null
 
 # ─── UI REFRESH ──────────────────────────────────────────────
@@ -1050,9 +1068,11 @@ func _update_command_panel() -> void:
 	var key := "default"
 	if _selected.size() == 1 and is_instance_valid(_selected[0]):
 		var sel := _selected[0]
-		if sel == _hq and is_instance_valid(_hq):
+		var is_hq := (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker"))
+		var is_barracks := sel.is_in_group("barracks") or sel.has_method("queue_wolf")
+		if is_hq:
 			key = "hq_%d_%d_%d" % [_wood, _supply, _max_supply]
-		elif sel.is_in_group("barracks"):
+		elif is_barracks:
 			key = "barracks_%d_%d_%d_%d" % [_wood, _resin, _supply, _max_supply]
 	if _attack_cursor:
 		key = "attack"
@@ -1069,10 +1089,10 @@ func _update_command_panel() -> void:
 	# Check if a single building is selected to show command cards
 	if _selected.size() == 1 and is_instance_valid(_selected[0]):
 		var sel := _selected[0]
-		if sel == _hq and is_instance_valid(_hq):
-			_build_hq_command_cards()
+		if (sel == _hq and is_instance_valid(_hq)) or sel.is_in_group("hq") or (sel.is_in_group("human_buildings") and sel.has_method("queue_worker")):
+			_build_hq_command_cards(sel)
 			return
-		if sel.is_in_group("barracks"):
+		if sel.is_in_group("barracks") or sel.has_method("queue_wolf"):
 			_build_barracks_command_cards(sel)
 			return
 
@@ -1098,7 +1118,7 @@ func _update_command_panel() -> void:
 	lbl.add_theme_font_size_override("font_size", 13)
 	_command_panel.add_child(lbl)
 
-func _build_hq_command_cards() -> void:
+func _build_hq_command_cards(hq: Node3D) -> void:
 	var title := Label.new()
 	title.text = "HQ - Production"
 	title.add_theme_font_size_override("font_size", 15)
@@ -1109,11 +1129,11 @@ func _build_hq_command_cards() -> void:
 	row.add_theme_constant_override("separation", 8)
 	_command_panel.add_child(row)
 
-	var can_afford: bool = _wood >= _hq.WORKER_COST
+	var can_afford: bool = _wood >= hq.worker_cost
 	var can_supply: bool = _supply < _max_supply
 	_add_command_card(row, "[Q] Worker", {
 		"HP": "45", "ATK": "5", "SPD": "5.5", "Range": "Melee",
-		"Cost": "%d wood" % _hq.WORKER_COST, "Supply": "1",
+		"Cost": "%d wood" % hq.worker_cost, "Supply": "1",
 		"Role": "Gathers wood & resin"
 	}, can_afford and can_supply, _try_train_worker)
 
@@ -1129,34 +1149,34 @@ func _build_barracks_command_cards(barracks: Node3D) -> void:
 	_command_panel.add_child(row)
 
 	# Wolf card
-	var wolf_afford: bool = _wood >= barracks.WOLF_COST_WOOD and _resin >= barracks.WOLF_COST_RESIN
-	var wolf_supply: bool = _supply + barracks.WOLF_SUPPLY <= _max_supply
-	var wolf_cost := "%dw" % barracks.WOLF_COST_WOOD
-	if barracks.WOLF_COST_RESIN > 0:
-		wolf_cost += "/%dr" % barracks.WOLF_COST_RESIN
+	var wolf_afford: bool = _wood >= barracks.wolf_cost_wood and _resin >= barracks.wolf_cost_resin
+	var wolf_supply: bool = _supply + barracks.wolf_supply <= _max_supply
+	var wolf_cost := "%dw" % barracks.wolf_cost_wood
+	if barracks.wolf_cost_resin > 0:
+		wolf_cost += "/%dr" % barracks.wolf_cost_resin
 	_add_command_card(row, "[R] Wolf", {
 		"HP": "55", "ATK": "7", "SPD": "7.0", "Range": "Melee",
-		"Cost": wolf_cost, "Supply": str(barracks.WOLF_SUPPLY),
+		"Cost": wolf_cost, "Supply": str(barracks.wolf_supply),
 		"Role": "Fast melee fighter"
 	}, wolf_afford and wolf_supply, _try_train_wolf)
 
 	# Primate card
-	var primate_afford: bool = _wood >= barracks.PRIMATE_COST_WOOD and _resin >= barracks.PRIMATE_COST_RESIN
-	var primate_supply: bool = _supply + barracks.PRIMATE_SUPPLY <= _max_supply
-	var primate_cost := "%dw/%dr" % [barracks.PRIMATE_COST_WOOD, barracks.PRIMATE_COST_RESIN]
+	var primate_afford: bool = _wood >= barracks.primate_cost_wood and _resin >= barracks.primate_cost_resin
+	var primate_supply: bool = _supply + barracks.primate_supply <= _max_supply
+	var primate_cost := "%dw/%dr" % [barracks.primate_cost_wood, barracks.primate_cost_resin]
 	_add_command_card(row, "[E] Primate", {
 		"HP": "50", "ATK": "9", "SPD": "5.0", "Range": "14",
-		"Cost": primate_cost, "Supply": str(barracks.PRIMATE_SUPPLY),
+		"Cost": primate_cost, "Supply": str(barracks.primate_supply),
 		"Role": "Ranged thrower"
 	}, primate_afford and primate_supply, _try_train_primate)
 
 	# Bear card
-	var bear_afford: bool = _wood >= barracks.BEAR_COST_WOOD and _resin >= barracks.BEAR_COST_RESIN
-	var bear_supply: bool = _supply + barracks.BEAR_SUPPLY <= _max_supply
-	var bear_cost := "%dw/%dr" % [barracks.BEAR_COST_WOOD, barracks.BEAR_COST_RESIN]
+	var bear_afford: bool = _wood >= barracks.bear_cost_wood and _resin >= barracks.bear_cost_resin
+	var bear_supply: bool = _supply + barracks.bear_supply <= _max_supply
+	var bear_cost := "%dw/%dr" % [barracks.bear_cost_wood, barracks.bear_cost_resin]
 	_add_command_card(row, "[F] Bear", {
 		"HP": "150", "ATK": "12", "SPD": "4.0", "Range": "Melee",
-		"Cost": bear_cost, "Supply": str(barracks.BEAR_SUPPLY),
+		"Cost": bear_cost, "Supply": str(barracks.bear_supply),
 		"Role": "Heavy tank"
 	}, bear_afford and bear_supply, _try_train_bear)
 
