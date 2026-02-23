@@ -63,7 +63,7 @@ func _process(_delta: float) -> void:
 	ratio = clampf(ratio, 0.0, 1.0)
 
 	# Scale and reposition the foreground bar to anchor left edge
-	var fill_width := (_bar_width - 0.04) * ratio
+	var _fill_width := (_bar_width - 0.04) * ratio
 	_bar_fg.scale.x = ratio if ratio > 0.001 else 0.001
 	_bar_fg.position.x = -(_bar_width - 0.04) * (1.0 - ratio) * 0.5
 
