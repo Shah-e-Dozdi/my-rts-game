@@ -64,6 +64,7 @@ func _ready() -> void:
 
 	add_to_group("human_buildings")
 	add_to_group("selectable")
+	add_to_group("hq")
 
 func _process(delta: float) -> void:
 	if _queue.is_empty():
