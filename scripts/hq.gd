@@ -16,6 +16,7 @@ const WORKER_BUILD_TIME := 12.0
 func _ready() -> void:
 	hp = max_hp
 
+	# Lodge - wooden cabin style HQ
 	_mesh = MeshInstance3D.new()
 	var box_mesh := BoxMesh.new()
 	box_mesh.size = Vector3(4, 2, 4)
@@ -24,21 +25,33 @@ func _ready() -> void:
 	add_child(_mesh)
 
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.7, 0.7, 0.8)
+	mat.albedo_color = Color(0.45, 0.3, 0.15)
 	_mesh.material_override = mat
 
-	# Antenna on top
-	var antenna := MeshInstance3D.new()
-	var ant_mesh := CylinderMesh.new()
-	ant_mesh.top_radius = 0.05
-	ant_mesh.bottom_radius = 0.05
-	ant_mesh.height = 1.5
-	antenna.mesh = ant_mesh
-	antenna.position = Vector3(0, 2.75, 0)
-	var ant_mat := StandardMaterial3D.new()
-	ant_mat.albedo_color = Color(0.4, 0.4, 0.5)
-	antenna.material_override = ant_mat
-	add_child(antenna)
+	# Peaked roof
+	var roof := MeshInstance3D.new()
+	var roof_mesh := BoxMesh.new()
+	roof_mesh.size = Vector3(4.4, 0.4, 4.4)
+	roof.mesh = roof_mesh
+	roof.position = Vector3(0, 2.2, 0)
+	var roof_mat := StandardMaterial3D.new()
+	roof_mat.albedo_color = Color(0.3, 0.2, 0.08)
+	roof.material_override = roof_mat
+	add_child(roof)
+
+	# Log accent pillars
+	for offset in [Vector3(-1.8, 1, -1.8), Vector3(1.8, 1, -1.8), Vector3(-1.8, 1, 1.8), Vector3(1.8, 1, 1.8)]:
+		var pillar := MeshInstance3D.new()
+		var pil_mesh := CylinderMesh.new()
+		pil_mesh.top_radius = 0.12
+		pil_mesh.bottom_radius = 0.12
+		pil_mesh.height = 2.0
+		pillar.mesh = pil_mesh
+		pillar.position = offset
+		var pil_mat := StandardMaterial3D.new()
+		pil_mat.albedo_color = Color(0.35, 0.22, 0.1)
+		pillar.material_override = pil_mat
+		add_child(pillar)
 
 	var body := StaticBody3D.new()
 	add_child(body)

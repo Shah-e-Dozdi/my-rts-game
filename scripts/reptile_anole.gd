@@ -3,10 +3,10 @@ extends CharacterBody3D
 signal unit_died(unit: Node3D)
 
 @export var move_speed := 6.0
-@export var attack_range := 1.0
-@export var attack_damage := 5
-@export var attack_cooldown := 0.5
-@export var max_hp := 35
+@export var attack_range := 1.5
+@export var attack_damage := 3
+@export var attack_cooldown := 1.0
+@export var max_hp := 40
 
 var hp: int
 var _mesh: MeshInstance3D
@@ -20,10 +20,12 @@ var _move_target := Vector3.ZERO
 var _attack_target: Node3D = null
 var _attack_timer := 0.0
 var _scan_timer := 0.0
+# Offset angle for spreading around buildings
 var _building_angle_offset := 0.0
 
 func _ready() -> void:
 	hp = max_hp
+	# Each unit gets a random angle offset so they spread around buildings
 	_building_angle_offset = randf_range(-PI, PI)
 
 	_nav_agent = NavigationAgent3D.new()
@@ -36,50 +38,25 @@ func _ready() -> void:
 	var col := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.35
-	capsule.height = 0.8
+	capsule.height = 0.7
 	col.shape = capsule
 	add_child(col)
 
-	# Ant body - small, dark, segmented
+	# Small capsule body (bright green)
 	_mesh = MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(0.5, 0.6, 0.7)
-	_mesh.mesh = box_mesh
+	var capsule_mesh := CapsuleMesh.new()
+	capsule_mesh.radius = 0.35
+	capsule_mesh.height = 0.7
+	_mesh.mesh = capsule_mesh
 	add_child(_mesh)
 
-	# Ant head
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.2
-	head_mesh.height = 0.35
-	head.mesh = head_mesh
-	head.position = Vector3(0, 0.1, -0.45)
-	var head_mat := StandardMaterial3D.new()
-	head_mat.albedo_color = Color(0.25, 0.08, 0.05)
-	head.material_override = head_mat
-	_mesh.add_child(head)
-
-	# Mandibles
-	for side in [-1.0, 1.0]:
-		var mandible := MeshInstance3D.new()
-		var mand_mesh := CylinderMesh.new()
-		mand_mesh.top_radius = 0.0
-		mand_mesh.bottom_radius = 0.04
-		mand_mesh.height = 0.2
-		mandible.mesh = mand_mesh
-		mandible.rotation_degrees.x = 90
-		mandible.position = Vector3(side * 0.1, 0.0, -0.55)
-		var mand_mat := StandardMaterial3D.new()
-		mand_mat.albedo_color = Color(0.4, 0.3, 0.2)
-		mandible.material_override = mand_mat
-		_mesh.add_child(mandible)
-
 	_mat_default = StandardMaterial3D.new()
-	_mat_default.albedo_color = Color(0.35, 0.12, 0.08)
+	_mat_default.albedo_color = Color(0.2, 0.7, 0.25)
 	_mesh.material_override = _mat_default
 
 	add_to_group("enemy_units")
 	add_to_group("enemies")
+	add_to_group("reptile_units")
 	_move_target = global_position
 
 func _physics_process(delta: float) -> void:
@@ -130,6 +107,7 @@ func _is_building(node: Node3D) -> bool:
 	return node.is_in_group("human_buildings") or node.is_in_group("enemy_buildings")
 
 func _get_effective_range(target: Node3D) -> float:
+	# Buildings are large - measure from edge not center
 	if _is_building(target):
 		return attack_range + 3.0
 	return attack_range
@@ -144,11 +122,13 @@ func _do_move() -> void:
 		_state = State.IDLE
 		return
 
+	# Close to target: move directly (nav mesh may carve out target area)
 	if target_dist < 5.0:
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
 		return
 
+	# Far away: use navigation agent
 	if _nav_agent.is_navigation_finished():
 		velocity = to_target.normalized() * move_speed
 		_face_direction(to_target)
@@ -172,6 +152,7 @@ func _do_attack(_delta: float) -> void:
 	var eff_range := _get_effective_range(_attack_target)
 
 	if dist > eff_range:
+		# For buildings, path to a spread-out perimeter point
 		var target_pos := _attack_target.global_position
 		if _is_building(_attack_target):
 			var approach_dir := Vector3(cos(_building_angle_offset), 0, sin(_building_angle_offset))
@@ -200,8 +181,8 @@ func _do_melee_hit() -> void:
 		return
 	var orig_pos := _mesh.position
 	var tween := get_tree().create_tween()
-	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.2), 0.04)
-	tween.tween_property(_mesh, "position", orig_pos, 0.08)
+	tween.tween_property(_mesh, "position", orig_pos + Vector3(0, 0, -0.3), 0.05)
+	tween.tween_property(_mesh, "position", orig_pos, 0.1)
 
 	if _attack_target.has_method("take_damage"):
 		_attack_target.take_damage(attack_damage, self)
