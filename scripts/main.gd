@@ -185,8 +185,8 @@ func _build_ui() -> void:
 	# Bottom command panel
 	var cmd_panel := PanelContainer.new()
 	cmd_panel.name = "CommandPanel"
+	cmd_panel.custom_minimum_size = Vector2(0, 120)
 	cmd_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	cmd_panel.custom_minimum_size = Vector2(0, 100)
 	_canvas.add_child(cmd_panel)
 
 	_command_panel = VBoxContainer.new()
